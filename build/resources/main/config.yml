@@ -1,0 +1,27 @@
+bots:
+  discord:
+    enabled: false
+    # Токен дс бота
+    token: ""
+    # id ds сервера (gid) - опционально, для проверки участников сервера и выдачи роли
+    guild-id: ""
+
+  telegram:
+    enabled: false
+    token: ""
+    proxy:
+      enabled: false #Если ТГ бот не работает из-за региональных ограничений (ебаный РКН)
+      # SOCKS5, SOCKS4 или HTTP
+      type: "SOCKS5"
+      host: "127.0.0.1"
+      port: 1080
+      username: ""
+      password: ""
+
+login-confirmation:
+  # Переподтверждение входа
+  enabled: true
+  # КД на переподтверждение
+  interval-hours: 6
+  # Время через которое кикнуть игрока
+  timeout-seconds: 60

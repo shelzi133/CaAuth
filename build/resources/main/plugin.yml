@@ -1,0 +1,31 @@
+name: CaAuth
+version: '1.0'
+main: z.caAuth.CaAuth
+softdepend: [LuckPerms]
+api-version: '1.21'
+description: Привязка аккаунта к Discord/Telegram + переподтверждение входа
+
+commands:
+  binding:
+    description: Привязка/статус привязки аккаунта
+    usage: /<command> [code]
+    aliases: [bind, verify]
+  unbind:
+    description: Отвязывает аккаунт игрока
+    usage: /<command> <игрок>
+    permission: caauth.unbind
+  caauth:
+    description: Служебные команды CaAuth
+    usage: /<command> [reload|info <игрок>]
+    aliases: [caau]
+
+permissions:
+  caauth.unbind:
+    description: Отвязка чужого аккаунта
+    default: op
+  caauth.reload:
+    description: Перезагрузка конфигурации CaAuth
+    default: op
+  caauth.info:
+    description: Просмотр информации об игроке (/caauth info)
+    default: op
