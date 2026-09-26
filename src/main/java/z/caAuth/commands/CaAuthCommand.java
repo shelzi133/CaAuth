@@ -9,15 +9,16 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import z.caAuth.CaAuth;
-import z.caAuth.account.AccountManager;
-import z.caAuth.bots.Discord.DiscordBotMessages;
-import z.caAuth.bots.Telegram.TelegramBotMessages;
-import z.caAuth.bots.Discord.DiscordBot;
-import z.caAuth.bots.Discord.Role.RolesConfig;
-import z.caAuth.bots.Telegram.TelegramBot;
-import z.caAuth.config.AuthConfig;
-import z.caAuth.config.MessagesConfig;
-import z.caAuth.util.BindingType;
+import z.caAuth.auth.account.AccountManager;
+import z.caAuth.bots.discord.DiscordBotMessages;
+import z.caAuth.bots.telegram.TelegramBotMessages;
+import z.caAuth.bots.discord.DiscordBot;
+import z.caAuth.bots.discord.Role.config.RolesConfig;
+import z.caAuth.bots.telegram.TelegramBot;
+import z.caAuth.auth.config.AuthConfig;
+import z.caAuth.auth.config.AuthMessagesConfig;
+import z.caAuth.auth.util.BindingType;
+import z.caAuth.config.MainConfig;
 
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
@@ -29,22 +30,24 @@ public class CaAuthCommand implements CommandExecutor, TabCompleter {
 
     private final CaAuth plugin;
     private final AuthConfig authConfig;
-    private final MessagesConfig messagesConfig;
+    private final AuthMessagesConfig authMessagesConfig;
     private final DiscordBotMessages discordBotMessages;
+    private final MainConfig mainConfig;
     private final TelegramBotMessages telegramBotMessages;
     private final RolesConfig rolesConfig;
     private final AccountManager accountManager;
 
-    public CaAuthCommand(CaAuth plugin, AuthConfig authConfig, MessagesConfig messagesConfig,
+    public CaAuthCommand(CaAuth plugin, AuthConfig authConfig, AuthMessagesConfig authMessagesConfig,
                          DiscordBotMessages discordBotMessages, TelegramBotMessages telegramBotMessages,
-                         RolesConfig rolesConfig, AccountManager accountManager) {
+                         RolesConfig rolesConfig, AccountManager accountManager, MainConfig mainConfig) {
         this.plugin = plugin;
         this.authConfig = authConfig;
-        this.messagesConfig = messagesConfig;
+        this.authMessagesConfig = authMessagesConfig;
         this.discordBotMessages = discordBotMessages;
         this.telegramBotMessages = telegramBotMessages;
         this.rolesConfig = rolesConfig;
         this.accountManager = accountManager;
+        this.mainConfig = mainConfig;
     }
 
     @Override
@@ -68,31 +71,39 @@ public class CaAuthCommand implements CommandExecutor, TabCompleter {
     }
 
     private void sendUsage(CommandSender sender) {
-        sender.sendMessage(messagesConfig.getCaauthUsageHeader());
-        sender.sendMessage(messagesConfig.getCaauthUsageReload());
-        sender.sendMessage(messagesConfig.getCaauthUsageInfo());
+        sender.sendMessage(authMessagesConfig.getCaauthUsageHeader());
+        sender.sendMessage(authMessagesConfig.getCaauthUsageReload());
+        sender.sendMessage(authMessagesConfig.getCaauthUsageInfo());
     }
 
     private void handleReload(CommandSender sender) {
         if (!sender.hasPermission("caauth.reload")) {
-            sender.sendMessage(messagesConfig.getNoPermission());
+            sender.sendMessage(authMessagesConfig.getNoPermission());
             return;
         }
-        authConfig.reload();
-        messagesConfig.reload();
+
+        boolean authReloaded = authConfig.reload();
+
+        authMessagesConfig.reload();
         telegramBotMessages.reload();
         discordBotMessages.reload();
         rolesConfig.reload();
-        sender.sendMessage(messagesConfig.getConfigReloaded());
+        mainConfig.reload();
+
+        if (authReloaded) {
+            sender.sendMessage(authMessagesConfig.getConfigReloaded());
+        } else {
+            sender.sendMessage(authMessagesConfig.getErrorPrefix() + "Не удалось перезагрузить config.yml, проверьте структуру файла");
+        }
     }
 
     private void handleInfo(CommandSender sender, String[] args) {
         if (!sender.hasPermission("caauth.info")) {
-            sender.sendMessage(messagesConfig.getNoPermission());
+            sender.sendMessage(authMessagesConfig.getNoPermission());
             return;
         }
         if (args.length < 2) {
-            sender.sendMessage(messagesConfig.getCaauthInfoUsage());
+            sender.sendMessage(authMessagesConfig.getCaauthInfoUsage());
             return;
         }
 
@@ -105,30 +116,30 @@ public class CaAuthCommand implements CommandExecutor, TabCompleter {
                 : Bukkit.getOfflinePlayer(requestedName);
 
         if (onlinePlayer == null && !targetPlayer.hasPlayedBefore()) {
-            sender.sendMessage(messagesConfig.getPlayerNeverPlayed(requestedName));
+            sender.sendMessage(authMessagesConfig.getPlayerNeverPlayed(requestedName));
             return;
         }
 
         UUID uuid = targetPlayer.getUniqueId();
         String displayName = targetPlayer.getName() != null ? targetPlayer.getName() : requestedName;
 
-        String ip = messagesConfig.getCaauthInfoIpUnavailable();
-        String client = messagesConfig.getCaauthInfoClientUnavailable();
+        String ip = authMessagesConfig.getCaauthInfoIpUnavailable();
+        String client = authMessagesConfig.getCaauthInfoClientUnavailable();
         if (onlinePlayer != null) {
             InetSocketAddress address = onlinePlayer.getAddress();
             ip = address != null && address.getAddress() != null
                     ? address.getAddress().getHostAddress()
-                    : messagesConfig.getCaauthInfoValueUnknown();
+                    : authMessagesConfig.getCaauthInfoValueUnknown();
 
             String brand = null;
             try {
                 brand = onlinePlayer.getClientBrandName();
             } catch (Throwable ignored) {
             }
-            client = brand != null && !brand.isBlank() ? brand : messagesConfig.getCaauthInfoValueUnknown();
+            client = brand != null && !brand.isBlank() ? brand : authMessagesConfig.getCaauthInfoValueUnknown();
         }
 
-        String playtime = messagesConfig.getCaauthInfoPlaytimeUnknown();
+        String playtime = authMessagesConfig.getCaauthInfoPlaytimeUnknown();
         try {
             int ticks = targetPlayer.getStatistic(Statistic.PLAY_ONE_MINUTE);
             long totalMinutes = ticks / (20L * 60L);
@@ -140,20 +151,20 @@ public class CaAuthCommand implements CommandExecutor, TabCompleter {
 
         String binding = resolveBindingDisplay(uuid);
 
-        sender.sendMessage(messagesConfig.getCaauthInfoTitle(displayName));
-        sender.sendMessage(messagesConfig.getCaauthInfoSeparator());
-        sender.sendMessage(messagesConfig.getCaauthInfoUuid(uuid.toString()));
-        sender.sendMessage(messagesConfig.getCaauthInfoNick(displayName));
-        sender.sendMessage(messagesConfig.getCaauthInfoIp(ip));
-        sender.sendMessage(messagesConfig.getCaauthInfoClient(client));
-        sender.sendMessage(messagesConfig.getCaauthInfoPlaytime(playtime));
-        sender.sendMessage(messagesConfig.getCaauthInfoBinding(binding));
-        sender.sendMessage(messagesConfig.getCaauthInfoSeparator());
+        sender.sendMessage(authMessagesConfig.getCaauthInfoTitle(displayName));
+        sender.sendMessage(authMessagesConfig.getCaauthInfoSeparator());
+        sender.sendMessage(authMessagesConfig.getCaauthInfoUuid(uuid.toString()));
+        sender.sendMessage(authMessagesConfig.getCaauthInfoNick(displayName));
+        sender.sendMessage(authMessagesConfig.getCaauthInfoIp(ip));
+        sender.sendMessage(authMessagesConfig.getCaauthInfoClient(client));
+        sender.sendMessage(authMessagesConfig.getCaauthInfoPlaytime(playtime));
+        sender.sendMessage(authMessagesConfig.getCaauthInfoBinding(binding));
+        sender.sendMessage(authMessagesConfig.getCaauthInfoSeparator());
     }
 
     private String resolveBindingDisplay(UUID uuid) {
         if (!accountManager.isAccountBound(uuid)) {
-            return messagesConfig.getCaauthInfoNotBound();
+            return authMessagesConfig.getCaauthInfoNotBound();
         }
 
         String rawType = accountManager.getBindingType(uuid);
@@ -164,13 +175,13 @@ public class CaAuthCommand implements CommandExecutor, TabCompleter {
         String typeLabel;
 
         if (type == BindingType.TELEGRAM) {
-            typeLabel = messagesConfig.getCaauthBindingLabelTelegram();
+            typeLabel = authMessagesConfig.getCaauthBindingLabelTelegram();
             TelegramBot telegramBot = plugin.getTelegramBot();
             if (telegramBot != null) {
                 resolvedUser = telegramBot.resolveChatUserDisplay(bindingId);
             }
         } else {
-            typeLabel = messagesConfig.getCaauthBindingLabelDiscord();
+            typeLabel = authMessagesConfig.getCaauthBindingLabelDiscord();
             DiscordBot discordBot = plugin.getDiscordBot();
             if (discordBot != null) {
                 resolvedUser = discordBot.resolveUserDisplayById(bindingId);
@@ -179,7 +190,7 @@ public class CaAuthCommand implements CommandExecutor, TabCompleter {
 
         StringBuilder sb = new StringBuilder();
         sb.append(typeLabel);
-        sb.append(" §7| §f").append(resolvedUser != null ? resolvedUser : messagesConfig.getCaauthInfoBindingUnknownUser());
+        sb.append(" §7| §f").append(resolvedUser != null ? resolvedUser : authMessagesConfig.getCaauthInfoBindingUnknownUser());
         sb.append(" §7| ID: §f").append(bindingId);
         return sb.toString();
     }

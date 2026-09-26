@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'z'
-version = '1.0'
+version = '2.0'
 
 repositories {
     mavenCentral()
@@ -16,8 +16,16 @@ repositories {
         name = "sonatype"
         url = "https://oss.sonatype.org/content/groups/public/"
     }
+    maven {
+        name = "okaeri-repo"
+        url = "https://repo.okaeri.cloud/releases"
+    }
+    mavenCentral()
+    maven {
+        name = "jitpack"
+        url = "https://jitpack.io"
+    }
 }
-
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT")
     implementation "net.dv8tion:JDA:5.3.2"
@@ -25,16 +33,24 @@ dependencies {
     implementation "org.telegram:telegrambots-abilities:6.9.7.1"
     implementation "org.xerial:sqlite-jdbc:3.44.1.0"
     compileOnly 'net.luckperms:api:5.4'
+    implementation("eu.okaeri:okaeri-configs-yaml-bukkit:6.1.0-beta.4")
+    compileOnly("com.github.plan-player-analytics:Plan:5.8.3638")
+    implementation "org.incendo:cloud-core:2.1.0"
+    implementation "org.incendo:cloud-paper:2.0.0"
+    implementation "org.incendo:cloud-annotations:2.0.0"
 }
 
 shadowJar {
     archiveBaseName.set('CaAuth')
     archiveClassifier.set('')
-    archiveVersion.set('')
 
 
     relocate 'net.dv8tion.jda', 'z.caauth.libs.jda'
     relocate 'com.fasterxml.jackson', 'z.caauth.libs.jackson'
+    relocate 'net.dv8tion.jda', 'z.caauth.libs.jda'
+    relocate 'com.fasterxml.jackson', 'z.caauth.libs.jackson'
+    relocate 'eu.okaeri.configs', 'z.caauth.libs.okaeri.configs'
+    relocate 'org.incendo.cloud', 'z.caAuth.libs.cloud'
 
     exclude 'META-INF/maven/**'
     exclude 'META-INF/DEPENDENCIES'

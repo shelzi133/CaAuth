@@ -1,7 +1,7 @@
 name: CaAuth
-version: '1.0'
+version: '2.0'
 main: z.caAuth.CaAuth
-softdepend: [LuckPerms]
+softdepend: [LuckPerms,Plan]
 api-version: '1.21'
 description: Привязка аккаунта к Discord/Telegram + переподтверждение входа
 

@@ -1,53 +1,64 @@
 package z.caAuth;
 
+import org.bukkit.Bukkit;
+import org.bukkit.command.CommandSender;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.telegram.telegrambots.bots.DefaultBotOptions;
-import org.telegram.telegrambots.meta.TelegramBotsApi;
-import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
-import org.telegram.telegrambots.meta.generics.BotSession;
-import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 
-import z.caAuth.account.AccountManager;
-import z.caAuth.account.AccountStorage;
-import z.caAuth.bots.Discord.DiscordBot;
-import z.caAuth.bots.Discord.DiscordBotMessages;
-import z.caAuth.bots.Discord.Role.LuckPermsRoleListener;
-import z.caAuth.bots.Discord.Role.RolesConfig;
-import z.caAuth.bots.Telegram.TelegramBot;
-import z.caAuth.bots.Telegram.TelegramBotMessages;
-import z.caAuth.commands.BindingCommand;
-import z.caAuth.commands.BindingTabCompleter;
-import z.caAuth.commands.CaAuthCommand;
-import z.caAuth.commands.UnbindCommand;
-import z.caAuth.config.AuthConfig;
-import z.caAuth.config.FirstJoin;
-import z.caAuth.config.MessagesConfig;
-import z.caAuth.confirmation.LoginConfirmationFreezeListener;
-import z.caAuth.confirmation.LoginConfirmationListener;
-import z.caAuth.confirmation.LoginConfirmationManager;
-import z.caAuth.integration.BotIntegration;
+import org.incendo.cloud.annotations.AnnotationParser;
+import org.incendo.cloud.execution.ExecutionCoordinator;
+import org.incendo.cloud.paper.LegacyPaperCommandManager;
+import z.caAuth.auth.account.AccountManager;
+import z.caAuth.auth.account.AccountStorage;
+import z.caAuth.bots.discord.Role.ActiveRoleCommandService;
+import z.caAuth.bots.discord.Role.ActiveRoleSyncScheduler;
+import z.caAuth.core.commands.ActivityPlayerCommand;
+import z.caAuth.core.config.Okaeri;
+import z.caAuth.bots.discord.DiscordBot;
+import z.caAuth.bots.discord.DiscordBotMessages;
+import z.caAuth.bots.discord.Role.LuckPermsRoleListener;
+import z.caAuth.bots.discord.role.config.RolesConfig;
+import z.caAuth.bots.telegram.TelegramBot;
+import z.caAuth.bots.telegram.TelegramBotMessages;
+import z.caAuth.auth.commands.BindingCommand;
+import z.caAuth.auth.commands.BindingTabCompleter;
+import z.caAuth.core.commands.CaAuthCommand;
+import z.caAuth.auth.commands.UnbindCommand;
+import z.caAuth.auth.config.AuthConfig;
+import z.caAuth.auth.config.AuthMessagesConfig;
+import z.caAuth.auth.login.LoginConfirmationFreezeListener;
+import z.caAuth.auth.login.LoginConfirmationListener;
+import z.caAuth.auth.login.LoginConfirmationManager;
+import z.caAuth.auth.integration.BotIntegration;
+import z.caAuth.bots.LoadBots;
+import z.caAuth.core.config.MainConfig;
+import z.caAuth.hook.PlanHook;
+import z.caAuth.hook.TimeCounter;
 
 public final class CaAuth extends JavaPlugin {
 
     private static volatile CaAuth instance;
 
     private AuthConfig authConfig;
-    private MessagesConfig messagesConfig;
+    private AuthMessagesConfig authMessagesConfig;
+    private MainConfig mainConfig;
     private TelegramBotMessages telegramBotMessages;
     private DiscordBotMessages discordBotMessages;
     private RolesConfig rolesConfig;
 
+    private ActiveRoleSyncScheduler scheduler;
     private AccountStorage accountStorage;
     private AccountManager accountManager;
     private BotIntegration botIntegration;
 
-    private LoginConfirmationManager loginConfirmationManager;
-
+    private LoadBots loadBots;
     private DiscordBot discordBot;
-    private TelegramBot telegramBot;
-    private BotSession telegramBotSession;
+    private ActiveRoleCommandService activeRoleCommandService;
+    private ActivityPlayerCommand activityPlayerCommand;
 
-    private FirstJoin firstjoin;
+    private PlanHook planHook;
+    private TimeCounter timeCounter;
+
+    private LoginConfirmationManager loginConfirmationManager;
 
     @Override
     public void onEnable() {
@@ -57,54 +68,82 @@ public final class CaAuth extends JavaPlugin {
                 "org.telegram.telegrambots.updatesreceivers.DefaultBotSession"
         ).setLevel(java.util.logging.Level.OFF);
 
-        authConfig = new AuthConfig(this);
-        messagesConfig = new MessagesConfig(this);
+        mainConfig = new Okaeri().loadMainConfig(this);
+        authConfig = new Okaeri().loadConfig(this);
+        authMessagesConfig = new Okaeri().loadMessages(this);
         telegramBotMessages = new TelegramBotMessages(this);
         discordBotMessages = new DiscordBotMessages(this);
-        rolesConfig = new RolesConfig(this);
-        firstjoin = new FirstJoin(messagesConfig);
+        rolesConfig = new Okaeri().loadRolesConfig(this);
+        planHook = new PlanHook(rolesConfig);
 
         accountStorage = new AccountStorage(getDataFolder());
         accountManager = new AccountManager(accountStorage);
-        botIntegration = new BotIntegration(accountStorage, accountManager, this, messagesConfig);
+        botIntegration = new BotIntegration(accountStorage, accountManager, this, authMessagesConfig);
+        loginConfirmationManager = new LoginConfirmationManager(this, accountManager, authConfig, authMessagesConfig);
 
-        if (authConfig.isLoginConfirmationEnabled()) {
+
+        loadBots = new LoadBots(this, authConfig, loginConfirmationManager, telegramBotMessages, discordBotMessages, rolesConfig, botIntegration, mainConfig);
+
+        if (authConfig.bots.loginConfirmation.enabled) {
             getLogger().info("Подтверждение входа через ботов активировано (интервал: "
-                    + authConfig.getLoginConfirmationIntervalHours() + " ч., таймаут: "
-                    + authConfig.getLoginConfirmationTimeoutSeconds() + " сек.)");
+                    + authConfig.bots.loginConfirmation.intervalHours + " ч., таймаут: "
+                    + authConfig.bots.loginConfirmation.timeoutSeconds + " сек.)");
         }
-        loginConfirmationManager = new LoginConfirmationManager(this, accountManager, authConfig, messagesConfig);
         getServer().getPluginManager().registerEvents(new LoginConfirmationListener(loginConfirmationManager), this);
 
         BindingTabCompleter bindingTabCompleter = new BindingTabCompleter();
-        BindingCommand bindingCommand = new BindingCommand(accountManager, messagesConfig);
+        BindingCommand bindingCommand = new BindingCommand(accountManager, authMessagesConfig, mainConfig);
         getCommand("binding").setExecutor(bindingCommand);
         getCommand("binding").setTabCompleter(bindingTabCompleter);
 
-        getCommand("unbind").setExecutor(new UnbindCommand(accountManager, messagesConfig));
+        getCommand("unbind").setExecutor(new UnbindCommand(accountManager, authMessagesConfig));
 
-        CaAuthCommand caAuthCommand = new CaAuthCommand(this, authConfig, messagesConfig, discordBotMessages,
-                telegramBotMessages, rolesConfig, accountManager);
+        CaAuthCommand caAuthCommand = new CaAuthCommand(this, authConfig, authMessagesConfig, discordBotMessages,
+                telegramBotMessages, rolesConfig, accountManager, mainConfig);
         getCommand("caauth").setExecutor(caAuthCommand);
         getCommand("caauth").setTabCompleter(caAuthCommand);
 
-        checkBotConfiguration();
-        startBots();
+        LegacyPaperCommandManager<CommandSender> commandManager = LegacyPaperCommandManager.createNative(
+                this,
+                ExecutionCoordinator.simpleCoordinator()
+        );
 
-        new LuckPermsRoleListener(this, discordBot, rolesConfig).register();
+        getServer().getScheduler().runTask(this, () -> {
+            timeCounter = planHook.hookIntoPlan().orElse(null);
+            if (timeCounter == null) {
+                getLogger().warning("Plan API не найден или не готов — роли по времени игры работать не будут.");
+                return;
+            }
+            scheduler = new ActiveRoleSyncScheduler(accountStorage, discordBot, rolesConfig, timeCounter) ;
+            Bukkit.getScheduler().runTaskTimerAsynchronously(this, scheduler::checkAll, 20L, rolesConfig.getPeriod());
+        });
+
+        loadBots.checkBotConfiguration();
+        loadBots.startBots();
+        this.discordBot = loadBots.getDiscordBot();
+
+        activeRoleCommandService = new ActiveRoleCommandService(accountStorage,discordBot);
+        activityPlayerCommand = new ActivityPlayerCommand(activeRoleCommandService,authMessagesConfig);
+
+        AnnotationParser<CommandSender> annotationParser = new AnnotationParser<>(
+        commandManager,
+                CommandSender.class
+        );
+        annotationParser.parse(activityPlayerCommand);
+
+        new LuckPermsRoleListener(this, loadBots.getDiscordBot(), rolesConfig).register();
 
         getServer().getPluginManager().registerEvents(
                 new LoginConfirmationFreezeListener(loginConfirmationManager), this
         );
 
-        getServer().getPluginManager().registerEvents(firstjoin, this);
 
         getLogger().info("CaAuth включен!");
     }
 
     @Override
     public void onDisable() {
-        stopBots();
+        loadBots.stopBots();
 
         if (accountStorage != null) {
             accountStorage.close();
@@ -137,8 +176,8 @@ public final class CaAuth extends JavaPlugin {
         return authConfig;
     }
 
-    public MessagesConfig getMessagesConfig() {
-        return messagesConfig;
+    public AuthMessagesConfig getMessagesConfig() {
+        return authMessagesConfig;
     }
 
     public LoginConfirmationManager getLoginConfirmationManager() {
@@ -146,96 +185,10 @@ public final class CaAuth extends JavaPlugin {
     }
 
     public DiscordBot getDiscordBot() {
-        return discordBot;
+        return loadBots.getDiscordBot();
     }
 
     public TelegramBot getTelegramBot() {
-        return telegramBot;
-    }
-
-    private void startBots() {
-        if (authConfig.isDiscordEnabled() && !authConfig.getDiscordBotToken().isEmpty()) {
-            try {
-                discordBot = new DiscordBot(this, botIntegration, discordBotMessages, rolesConfig, loginConfirmationManager,
-                        authConfig.getDiscordBotToken(),
-                        authConfig.getDiscordGuildId());
-                discordBot.start();
-                loginConfirmationManager.setDiscordBot(discordBot);
-            } catch (Exception e) {
-                getLogger().severe("Не удалось запустить Discord бота: " + e.getMessage());
-                e.printStackTrace();
-            }
-        }
-        if (authConfig.isTelegramEnabled() && !authConfig.getTelegramBotToken().isEmpty()) {
-            try {
-                DefaultBotOptions options = new DefaultBotOptions();
-                org.apache.http.client.config.RequestConfig requestConfig =
-                        org.apache.http.client.config.RequestConfig.custom()
-                                .setConnectTimeout(15_000)
-                                .setConnectionRequestTimeout(15_000)
-                                .setSocketTimeout(75_000)
-                                .build();
-                options.setRequestConfig(requestConfig);
-
-                if (authConfig.isTelegramProxyEnabled()) {
-                    options.setProxyHost(authConfig.getTelegramProxyHost());
-                    options.setProxyPort(authConfig.getTelegramProxyPort());
-                    options.setProxyType(DefaultBotOptions.ProxyType.valueOf(
-                            authConfig.getTelegramProxyType().toUpperCase()));
-
-                    String proxyUser = authConfig.getTelegramProxyUsername();
-                    String proxyPass = authConfig.getTelegramProxyPassword();
-                    if (proxyUser != null && !proxyUser.isEmpty()) {
-                        final String finalUser = proxyUser;
-                        final char[] finalPass = (proxyPass == null ? "" : proxyPass).toCharArray();
-                        java.net.Authenticator.setDefault(new java.net.Authenticator() {
-                            @Override
-                            protected java.net.PasswordAuthentication getPasswordAuthentication() {
-                                return new java.net.PasswordAuthentication(finalUser, finalPass);
-                            }
-                        });
-                    }
-
-                    getLogger().info("Telegram бот запускается через прокси "
-                            + authConfig.getTelegramProxyHost() + ":" + authConfig.getTelegramProxyPort()
-                            + " (" + authConfig.getTelegramProxyType() + ")");
-                }
-                telegramBot = new TelegramBot(this, botIntegration, telegramBotMessages, loginConfirmationManager,
-                        authConfig.getTelegramBotToken(), options);
-                TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-                telegramBotSession = botsApi.registerBot(telegramBot);
-                telegramBot.start();
-                loginConfirmationManager.setTelegramBot(telegramBot);
-            } catch (TelegramApiException e) {
-                getLogger().severe("Не удалось запустить Telegram бота: " + e.getMessage());
-                e.printStackTrace();
-            } catch (Exception e) {
-                getLogger().severe("Ошибка при инициализации Telegram бота: " + e.getMessage());
-                e.printStackTrace();
-            }
-        }
-    }
-
-    private void stopBots() {
-        if (discordBot != null) {
-            discordBot.stop();
-        }
-        if (telegramBot != null) {
-            telegramBot.stop();
-        }
-        //остановка long-polling поток (ReaderThread)
-        //чтобы старые потоки не отправляли api.telegram.org.
-        if (telegramBotSession != null && telegramBotSession.isRunning()) {
-            telegramBotSession.stop();
-        }
-    }
-
-    private void checkBotConfiguration() {
-        if (authConfig.isDiscordEnabled() && authConfig.getDiscordBotToken().isEmpty()) {
-            getLogger().warning("Discord бот включен, но токен не настроен! Установите токен в config.yml");
-        }
-        if (authConfig.isTelegramEnabled() && authConfig.getTelegramBotToken().isEmpty()) {
-            getLogger().warning("Telegram бот включен, но токен не настроен! Установите токен в config.yml");
-        }
+        return loadBots.getTelegramBot();
     }
 }
