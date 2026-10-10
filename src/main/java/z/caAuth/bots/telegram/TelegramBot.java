@@ -4,6 +4,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.telegram.telegrambots.bots.DefaultBotOptions;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
+import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
 import org.telegram.telegrambots.meta.api.methods.groupadministration.GetChat;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
@@ -11,16 +12,21 @@ import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Chat;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
+import org.telegram.telegrambots.meta.api.objects.commands.BotCommand;
+import org.telegram.telegrambots.meta.api.objects.commands.scope.BotCommandScopeDefault;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
-import z.caAuth.auth.integration.BotIntegration;
-import z.caAuth.auth.login.LoginConfirmationManager;
+import z.caAuth.account.BindingType;
+import z.caAuth.binding.BindingService;
+import z.caAuth.bots.ChatBot;
+import z.caAuth.config.TelegramBotMessages;
+import z.caAuth.login.LoginConfirmationManager;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class TelegramBot extends TelegramLongPollingBot implements TelegramSender {
+public class TelegramBot extends TelegramLongPollingBot implements TelegramSender, ChatBot {
 
     private static final String LOGIN_CONFIRM_PREFIX = "login_confirm_";
     private static final String LOGIN_DENY_PREFIX = "login_deny_";
@@ -28,22 +34,21 @@ public class TelegramBot extends TelegramLongPollingBot implements TelegramSende
     private final JavaPlugin plugin;
     private final LoginConfirmationManager confirmationManager;
     private final TelegramMessageHandler messageHandler;
+    private final TelegramMenu menu;
+    private final TelegramBotMessages messages;
     private final String token;
 
     private boolean isRunning = false;
 
-    public TelegramBot(JavaPlugin plugin, BotIntegration botIntegration, TelegramBotMessages messagesConfig,
-                        LoginConfirmationManager confirmationManager, String token) {
-        this(plugin, botIntegration, messagesConfig, confirmationManager, token, new DefaultBotOptions());
-    }
-
-    public TelegramBot(JavaPlugin plugin, BotIntegration botIntegration, TelegramBotMessages messagesConfig,
-                        LoginConfirmationManager confirmationManager, String token, DefaultBotOptions options) {
+    public TelegramBot(JavaPlugin plugin, BindingService bindingService, TelegramBotMessages messagesConfig,
+                       LoginConfirmationManager confirmationManager, String token, DefaultBotOptions options) {
         super(options);
         this.plugin = plugin;
         this.confirmationManager = confirmationManager;
         this.token = token;
-        this.messageHandler = new TelegramMessageHandler(botIntegration, messagesConfig, this);
+        this.messages = messagesConfig;
+        this.messageHandler = new TelegramMessageHandler(bindingService, messagesConfig, this);
+        this.menu = new TelegramMenu(bindingService, messagesConfig, this);
     }
 
     @Override
@@ -70,6 +75,12 @@ public class TelegramBot extends TelegramLongPollingBot implements TelegramSende
             String text = message.getText().trim();
             String telegramId = String.valueOf(message.getFrom().getId());
             String chatId = String.valueOf(message.getChatId());
+
+            if (menu.isMenuCommand(text)) {
+                menu.sendMenu(chatId);
+                return;
+            }
+
             messageHandler.handleMessage(text, telegramId, chatId);
         }
     }
@@ -82,25 +93,32 @@ public class TelegramBot extends TelegramLongPollingBot implements TelegramSende
         if (data.startsWith(LOGIN_CONFIRM_PREFIX)) {
             String loginToken = data.substring(LOGIN_CONFIRM_PREFIX.length());
             confirmationManager.confirm(loginToken);
-            answerCallbackQuery(callbackQuery.getId(), "✅ Вход подтверждён");
-            editToStatusText(chatId, messageId, "✅ Вход подтверждён.");
+            answerCallbackQuery(callbackQuery.getId(), messages.getLoginConfirmedAlert());
+            editToStatusText(chatId, messageId, messages.getLoginConfirmed());
             return;
         }
         if (data.startsWith(LOGIN_DENY_PREFIX)) {
             String loginToken = data.substring(LOGIN_DENY_PREFIX.length());
             confirmationManager.deny(loginToken);
-            answerCallbackQuery(callbackQuery.getId(), "❌ Вход отклонён");
-            editToStatusText(chatId, messageId, "❌ Вход отклонён, игрок кикнут с сервера.");
+            answerCallbackQuery(callbackQuery.getId(), messages.getLoginDeniedAlert());
+            editToStatusText(chatId, messageId, messages.getLoginDenied());
             return;
         }
-        answerCallbackQuery(callbackQuery.getId(), "❓ Неизвестное действие");
+        if (menu.isMenuCallback(data)) {
+            answerCallbackQuery(callbackQuery.getId(), null);
+            menu.handleCallback(data, String.valueOf(callbackQuery.getFrom().getId()), chatId);
+            return;
+        }
+        answerCallbackQuery(callbackQuery.getId(), messages.getUnknownAction());
     }
 
     private void answerCallbackQuery(String callbackId, String text) {
         try {
             AnswerCallbackQuery answer = new AnswerCallbackQuery();
             answer.setCallbackQueryId(callbackId);
-            answer.setText(text);
+            if (text != null) {
+                answer.setText(text);
+            }
             answer.setShowAlert(false);
             execute(answer);
         } catch (TelegramApiException e) {
@@ -121,6 +139,7 @@ public class TelegramBot extends TelegramLongPollingBot implements TelegramSende
         }
     }
 
+    @Override
     public boolean sendLoginConfirmation(String telegramId, String playerName, String loginToken, int timeoutSeconds) {
         if (!isRunning() || telegramId == null || telegramId.isBlank()) {
             return false;
@@ -131,21 +150,19 @@ public class TelegramBot extends TelegramLongPollingBot implements TelegramSende
             List<InlineKeyboardButton> row = new ArrayList<>();
 
             InlineKeyboardButton confirmBtn = new InlineKeyboardButton();
-            confirmBtn.setText("✅ Подтвердить вход");
+            confirmBtn.setText(messages.getLoginConfirmButton());
             confirmBtn.setCallbackData(LOGIN_CONFIRM_PREFIX + loginToken);
             row.add(confirmBtn);
 
             InlineKeyboardButton denyBtn = new InlineKeyboardButton();
-            denyBtn.setText("❌ Это не я");
+            denyBtn.setText(messages.getLoginDenyButton());
             denyBtn.setCallbackData(LOGIN_DENY_PREFIX + loginToken);
             row.add(denyBtn);
 
             rows.add(row);
             keyboard.setKeyboard(rows);
 
-            String text = "<b>🔐 Подтверждение входа на сервер</b>\n\n" +
-                    "Игрок <b>" + TelegramTextFormatter.escapeHtml(playerName) + "</b> заходит на сервер.\n" +
-                    "Если это вы - подтвердите вход в течение <b>" + timeoutSeconds + " секунд</b>, иначе вы будете кикнуты.";
+            String text = TelegramTextFormatter.convertMarkdownToHtml(messages.getLoginConfirmText(playerName, timeoutSeconds));
 
             sendMessage(telegramId, text, true, keyboard);
             return true;
@@ -155,6 +172,12 @@ public class TelegramBot extends TelegramLongPollingBot implements TelegramSende
         }
     }
 
+    @Override
+    public BindingType type() {
+        return BindingType.TELEGRAM;
+    }
+
+    @Override
     public void start() {
         if (token == null || token.isEmpty()) {
             plugin.getLogger().warning("Telegram токен не настроен!");
@@ -162,6 +185,7 @@ public class TelegramBot extends TelegramLongPollingBot implements TelegramSende
         }
         try {
             isRunning = true;
+            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, this::registerCommands);
             plugin.getLogger().info("Telegram бот успешно запущен!");
         } catch (Exception e) {
             plugin.getLogger().severe("Ошибка при запуске Telegram бота: " + e.getMessage());
@@ -169,6 +193,21 @@ public class TelegramBot extends TelegramLongPollingBot implements TelegramSende
         }
     }
 
+    private void registerCommands() {
+        try {
+            List<BotCommand> commands = new ArrayList<>();
+            commands.add(new BotCommand("menu", messages.getCommandMenuDescription()));
+            commands.add(new BotCommand("start", messages.getCommandStartDescription()));
+            execute(SetMyCommands.builder()
+                    .commands(commands)
+                    .scope(new BotCommandScopeDefault())
+                    .build());
+        } catch (TelegramApiException e) {
+            plugin.getLogger().warning("Не удалось зарегистрировать команды Telegram бота: " + e.getMessage());
+        }
+    }
+
+    @Override
     public void stop() {
         isRunning = false;
     }
@@ -183,7 +222,8 @@ public class TelegramBot extends TelegramLongPollingBot implements TelegramSende
         sendMessage(chatId, text, useHtml, null);
     }
 
-    private void sendMessage(String chatId, String text, boolean useHtml, InlineKeyboardMarkup keyboard) {
+    @Override
+    public void sendMessage(String chatId, String text, boolean useHtml, InlineKeyboardMarkup keyboard) {
         SendMessage message = new SendMessage();
         message.setChatId(chatId);
         message.setText(text);
@@ -202,18 +242,8 @@ public class TelegramBot extends TelegramLongPollingBot implements TelegramSende
         }
     }
 
-    public void sendMessageToUser(String telegramId, String message) {
-        if (!isRunning()) {
-            return;
-        }
-        try {
-            sendMessage(telegramId, message, true);
-        } catch (Exception e) {
-            plugin.getLogger().warning("Ошибка при отправке сообщения в Telegram: " + e.getMessage());
-        }
-    }
-
-    public String resolveChatUserDisplay(String telegramUserId) {
+    @Override
+    public String resolveDisplay(String telegramUserId) {
         if (!isRunning() || telegramUserId == null || telegramUserId.isBlank()) {
             return null;
         }

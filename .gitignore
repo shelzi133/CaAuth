@@ -21,3 +21,5 @@ Thumbs.db
 # Env / secrets
 .env
 *.local
+# Gradle
+.gradle/

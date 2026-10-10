@@ -1,66 +1,83 @@
 package z.caAuth.commands;
 
+import org.bukkit.OfflinePlayer;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
-import org.incendo.cloud.annotations.Argument;
-import org.incendo.cloud.annotations.Command;
-import org.incendo.cloud.annotations.Permission;
-import z.caAuth.auth.config.AuthMessagesConfig;
-import z.caAuth.bots.discord.Role.Manager.RoleManager;
+import revxrsal.commands.annotation.Command;
+import revxrsal.commands.annotation.Optional;
+import revxrsal.commands.bukkit.actor.BukkitCommandActor;
+import z.caAuth.bots.discord.role.ActiveRoleService;
+import z.caAuth.config.AuthMessagesConfig;
 
 import java.util.UUID;
 
-public class ActivityPlayerCommand  {
+public class ActivityPlayerCommand {
 
-    private RoleManager roleManager;
+    private static final String PERMISSION_SELF = "caauth.activityplayer.self";
+    private static final String PERMISSION_OTHER = "caauth.activityplayer.other";
+
+    private final ActiveRoleService activeRoleService;
     private final AuthMessagesConfig messagesConfig;
 
-    public ActivityPlayerCommand(RoleManager roleManager, AuthMessagesConfig messagesConfig){
+    public ActivityPlayerCommand(ActiveRoleService activeRoleService, AuthMessagesConfig messagesConfig) {
+        this.activeRoleService = activeRoleService;
         this.messagesConfig = messagesConfig;
-        this.roleManager = roleManager;
     }
 
     @Command("activityplayer")
-    @Permission("caauth.activityplayer.self")
-    public void activityPlayerSelf(Player sender){
-        UUID playeruuid = sender.getUniqueId();
-
-
-        if(!roleManager.isDiscordAvailable()) {
-           sender.sendMessage(messagesConfig.getBotUnavailable());
-           return;
-        }
-
-        if(roleManager.isActiveRole(playeruuid) == false) {
-            roleManager.grantActiveRole(playeruuid);
-            sender.sendMessage(messagesConfig.getIssuedActivityPlayerRoleSelf());
+    public void toggle(BukkitCommandActor actor, @Optional OfflinePlayer target) {
+        if (target == null) {
+            handleSelf(actor.sender());
         } else {
-            roleManager.removeActiveRole(playeruuid);
-            sender.sendMessage(messagesConfig.getTakeActivityPlayerRoleSelf());
+            handleOther(actor.sender(), target);
         }
     }
 
-    @Command("activityplayer <target>")
-    @Permission("caauth.activityplayer.other")
-    public void activityPlayerOther(CommandSender sender, @Argument("target") Player target){
-
-
-        if(!roleManager.isDiscordAvailable()) {
+    private void handleSelf(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(messagesConfig.getCommandPlayerOnly());
+            return;
+        }
+        if (!sender.hasPermission(PERMISSION_SELF)) {
+            sender.sendMessage(messagesConfig.getNoPermission());
+            return;
+        }
+        if (!activeRoleService.isDiscordAvailable()) {
             sender.sendMessage(messagesConfig.getBotUnavailable());
             return;
         }
 
-        UUID playeruuid = target.getUniqueId();
-        String playername = target.getName();
-
-        if(roleManager.isActiveRole(playeruuid) == false) {
-            roleManager.grantActiveRole(playeruuid);
-            sender.sendMessage(messagesConfig.getIssuedActivityPlayerRoleOther(playername));
+        if (toggleRole(player.getUniqueId())) {
+            sender.sendMessage(messagesConfig.getIssuedActivityPlayerRoleSelf());
         } else {
-            roleManager.removeActiveRole(playeruuid);
-            sender.sendMessage(messagesConfig.getTakeActivityPlayerRoleOther(playername));
+            sender.sendMessage(messagesConfig.getTakeActivityPlayerRoleSelf());
         }
     }
 
-}
+    private void handleOther(CommandSender sender, OfflinePlayer target) {
+        if (!sender.hasPermission(PERMISSION_OTHER)) {
+            sender.sendMessage(messagesConfig.getNoPermission());
+            return;
+        }
+        if (!activeRoleService.isDiscordAvailable()) {
+            sender.sendMessage(messagesConfig.getBotUnavailable());
+            return;
+        }
 
+        String playerName = target.getName() != null ? target.getName() : target.getUniqueId().toString();
+        if (toggleRole(target.getUniqueId())) {
+            sender.sendMessage(messagesConfig.getIssuedActivityPlayerRoleOther(playerName));
+        } else {
+            sender.sendMessage(messagesConfig.getTakeActivityPlayerRoleOther(playerName));
+        }
+    }
+
+    private boolean toggleRole(UUID playerUUID) {
+        if (activeRoleService.isActiveRole(playerUUID)) {
+            activeRoleService.removeActiveRole(playerUUID);
+            return false;
+        }
+        activeRoleService.grantActiveRole(playerUUID);
+        return true;
+    }
+}

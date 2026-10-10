@@ -1,6 +1,6 @@
 package z.caAuth.bots.telegram;
 
-import z.caAuth.auth.util.ColorManager;
+import z.caAuth.util.Colors;
 
 public final class TelegramTextFormatter {
 
@@ -11,7 +11,7 @@ public final class TelegramTextFormatter {
         if (text == null) {
             return "";
         }
-        text = ColorManager.processTelegramColors(text);
+        text = Colors.processTelegramColors(text);
         text = text.replaceAll("\\*\\*(.+?)\\*\\*", "<b>$1</b>");
         text = text.replaceAll("```py\\s*(.+?)\\s*```", "<code>$1</code>");
         text = text.replaceAll("```(.+?)```", "<code>$1</code>");

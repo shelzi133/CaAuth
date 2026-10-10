@@ -4,51 +4,73 @@ import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.entities.Activity;
-import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.components.buttons.Button;
+import okhttp3.OkHttpClient;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
-import z.caAuth.auth.integration.BotIntegration;
-import z.caAuth.auth.login.LoginConfirmationManager;
-import z.caAuth.auth.util.ColorManager;
-import z.caAuth.bots.discord.role.config.RolesConfig;
+import z.caAuth.account.BindingType;
+import z.caAuth.binding.BindingService;
+import z.caAuth.bots.BotProxy;
+import z.caAuth.bots.ChatBot;
+import z.caAuth.bots.discord.role.DiscordRoleService;
+import z.caAuth.config.AuthConfig;
+import z.caAuth.config.DiscordBotMessages;
+import z.caAuth.config.RolesConfig;
+import z.caAuth.integration.placeholderapi.OnlineCounter;
+import z.caAuth.login.LoginConfirmationManager;
 
 import java.awt.Color;
+import java.time.Duration;
 import java.util.Collections;
 
-public class DiscordBot extends ListenerAdapter implements DiscordGuildAccessor {
+public class DiscordBot extends ListenerAdapter implements ChatBot {
 
     private static final String LOGIN_CONFIRM_PREFIX = "login_confirm_";
     private static final String LOGIN_DENY_PREFIX = "login_deny_";
-    private static final long PRESENCE_UPDATE_PERIOD_TICKS = 40L;
+    private static final long PRESENCE_UPDATE_PERIOD_TICKS = 200L;
 
     private final JavaPlugin plugin;
     private final LoginConfirmationManager confirmationManager;
     private final DiscordMessageHandler messageHandler;
     private final DiscordRoleService roleService;
+    private final DiscordBotMessages messages;
+    private final OnlineCounter onlineCounter;
     private final String token;
     private final String guildId;
+    private final AuthConfig authConfig;
+    private final AuthConfig.Proxy proxy;
 
     private JDA jda;
     private boolean isRunning = false;
     private BukkitTask presenceUpdateTask;
+    private int lastPresenceCount = -1;
 
-    public DiscordBot(JavaPlugin plugin, BotIntegration botIntegration, DiscordBotMessages messagesConfig,
-                       RolesConfig rolesConfig, LoginConfirmationManager confirmationManager,
-                       String token, String guildId) {
+    public DiscordBot(JavaPlugin plugin, BindingService bindingService, DiscordBotMessages messagesConfig,
+                      RolesConfig rolesConfig, LoginConfirmationManager confirmationManager,
+                      String token, String guildId, AuthConfig authConfig) {
         this.plugin = plugin;
         this.confirmationManager = confirmationManager;
+        this.messages = messagesConfig;
+        this.onlineCounter = new OnlineCounter(plugin);
         this.token = token;
         this.guildId = guildId;
-        this.roleService = new DiscordRoleService(plugin, botIntegration, rolesConfig, this);
-        this.messageHandler = new DiscordMessageHandler(plugin, botIntegration, messagesConfig, roleService);
+        this.authConfig = authConfig;
+        this.proxy = BotProxy.appliesTo(authConfig.proxy, BindingType.DISCORD) ? authConfig.proxy : null;
+        this.roleService = new DiscordRoleService(plugin, bindingService, rolesConfig, this);
+        this.messageHandler = new DiscordMessageHandler(bindingService, messagesConfig, roleService);
     }
 
+    @Override
+    public BindingType type() {
+        return BindingType.DISCORD;
+    }
+
+    @Override
     public void start() {
         if (token == null || token.isEmpty()) {
             plugin.getLogger().warning("Discord токен не настроен!");
@@ -56,9 +78,16 @@ public class DiscordBot extends ListenerAdapter implements DiscordGuildAccessor 
         }
 
         try {
-            jda = JDABuilder.createDefault(token)
-                    .addEventListeners(this)
-                    .build();
+            JDABuilder builder = JDABuilder.createDefault(token)
+                    .addEventListeners(this);
+            if (proxy != null) {
+                BotProxy.installAuthenticator(proxy);
+                builder.setHttpClientBuilder(BotProxy.applyTo(new OkHttpClient.Builder(), proxy));
+                builder.setWebsocketFactory(BotProxy.webSocketFactory(proxy));
+                plugin.getLogger().info("Discord бот запускается через прокси "
+                        + proxy.host + ":" + proxy.port + " (" + proxy.type + ")");
+            }
+            jda = builder.build();
             jda.awaitReady();
 
             isRunning = true;
@@ -76,26 +105,45 @@ public class DiscordBot extends ListenerAdapter implements DiscordGuildAccessor 
         }
     }
 
+    @Override
     public void stop() {
         stopPresenceUpdater();
         if (jda != null) {
-            jda.shutdown();
             isRunning = false;
+            jda.shutdown();
+            try {
+                if (!jda.awaitShutdown(Duration.ofSeconds(5))) {
+                    jda.shutdownNow();
+                    jda.awaitShutdown(Duration.ofSeconds(5));
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                jda.shutdownNow();
+            }
             plugin.getLogger().info("Discord бот остановлен.");
         }
     }
 
     private void startPresenceUpdater() {
         stopPresenceUpdater();
-        presenceUpdateTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            if (jda == null || !isRunning || jda.getStatus() != JDA.Status.CONNECTED) return;
-            try {
-                int online = Bukkit.getOnlinePlayers().size();
-                jda.getPresence().setActivity(Activity.watching("Онлайн: " + online));
-            } catch (Exception e) {
-                plugin.getLogger().fine("Discord presence update: " + e.getMessage());
+        lastPresenceCount = -1;
+        presenceUpdateTask = Bukkit.getScheduler().runTaskTimer(plugin,
+                () -> updatePresence(false), 5L, PRESENCE_UPDATE_PERIOD_TICKS);
+    }
+
+    public int updatePresence(boolean force) {
+        if (jda == null || !isRunning || jda.getStatus() != JDA.Status.CONNECTED) return -1;
+        try {
+            int online = onlineCounter.count() * authConfig.bots.discord.fakeOnline;
+            if (force || online != lastPresenceCount) {
+                lastPresenceCount = online;
+                jda.getPresence().setActivity(Activity.watching(messages.getPresence(online)));
             }
-        }, 5L, PRESENCE_UPDATE_PERIOD_TICKS);
+            return online;
+        } catch (Exception e) {
+            plugin.getLogger().warning("Discord presence update: " + e.getMessage());
+            return -1;
+        }
     }
 
     private void stopPresenceUpdater() {
@@ -110,17 +158,16 @@ public class DiscordBot extends ListenerAdapter implements DiscordGuildAccessor 
         return isRunning && jda != null && jda.getStatus() == JDA.Status.CONNECTED;
     }
 
-    @Override
     public JDA getJda() {
         return jda;
     }
 
-    @Override
     public String getGuildId() {
         return guildId;
     }
 
-    public String resolveUserDisplayById(String discordUserId) {
+    @Override
+    public String resolveDisplay(String discordUserId) {
         if (!isRunning() || discordUserId == null || discordUserId.isBlank()) return null;
         try {
             long snowflake = Long.parseLong(discordUserId.trim());
@@ -133,19 +180,19 @@ public class DiscordBot extends ListenerAdapter implements DiscordGuildAccessor 
         }
     }
 
+    @Override
     public boolean sendLoginConfirmation(String discordId, String playerName, String token, int timeoutSeconds) {
         if (jda == null || !isRunning() || discordId == null || discordId.isBlank()) return false;
         try {
             long snowflake = Long.parseLong(discordId.trim());
             jda.retrieveUserById(snowflake).queue(user -> {
                 user.openPrivateChannel().queue(channel -> {
-                    Button confirmBtn = Button.success(LOGIN_CONFIRM_PREFIX + token, "✅ Подтвердить вход");
-                    Button denyBtn = Button.danger(LOGIN_DENY_PREFIX + token, "❌ Это не я");
+                    Button confirmBtn = Button.success(LOGIN_CONFIRM_PREFIX + token, messages.getLoginConfirmButton());
+                    Button denyBtn = Button.danger(LOGIN_DENY_PREFIX + token, messages.getLoginDenyButton());
 
                     EmbedBuilder embed = new EmbedBuilder();
-                    embed.setTitle("🔐 Подтверждение входа на сервер");
-                    embed.setDescription("Игрок **" + playerName + "** заходит на сервер.\n" +
-                            "Если это вы - подтвердите вход в течение **" + timeoutSeconds + " секунд**, иначе вы будете кикнуты.");
+                    embed.setTitle(messages.getLoginConfirmTitle());
+                    embed.setDescription(messages.getLoginConfirmDescription(playerName, timeoutSeconds));
                     embed.setColor(new Color(0xFFA500));
 
                     channel.sendMessageEmbeds(embed.build())
@@ -166,43 +213,6 @@ public class DiscordBot extends ListenerAdapter implements DiscordGuildAccessor 
         }
     }
 
-    public void sendMessageToUser(String discordId, String message) {
-        if (jda == null || !isRunning()) return;
-        try {
-            User user = jda.retrieveUserById(discordId).complete();
-            if (user == null) return;
-
-            user.openPrivateChannel().queue(channel -> {
-                if (ColorManager.containsHexColors(message)) {
-                    String hexColor = ColorManager.extractHexColor(message);
-                    int colorInt = hexColor != null ? ColorManager.hexToInt(hexColor) : -1;
-                    String cleanText = ColorManager.processDiscordColors(message);
-
-                    EmbedBuilder embed = new EmbedBuilder();
-                    embed.setDescription(cleanText);
-                    if (colorInt != -1) embed.setColor(new Color(colorInt));
-                    channel.sendMessageEmbeds(embed.build()).queue();
-                } else {
-                    channel.sendMessage(message).queue();
-                }
-            });
-        } catch (Exception e) {
-            plugin.getLogger().warning("Ошибка при отправке сообщения в Discord: " + e.getMessage());
-        }
-    }
-
-    public boolean isUserInGuild(String userId) {
-        if (guildId == null || guildId.isEmpty() || jda == null) return true;
-        try {
-            Guild guild = jda.getGuildById(guildId);
-            if (guild == null) return false;
-            return guild.getMemberById(userId) != null;
-        } catch (Exception e) {
-            plugin.getLogger().warning("Ошибка при проверке участника сервера: " + e.getMessage());
-            return false;
-        }
-    }
-
     public DiscordRoleService getRoleService() {
         return roleService;
     }
@@ -214,13 +224,13 @@ public class DiscordBot extends ListenerAdapter implements DiscordGuildAccessor 
             String loginToken = componentId.substring(LOGIN_CONFIRM_PREFIX.length());
             confirmationManager.confirm(loginToken);
             event.editMessageEmbeds(
-                    new EmbedBuilder().setDescription("✅ Вход подтверждён.").setColor(new Color(0x00FF00)).build()
+                    new EmbedBuilder().setDescription(messages.getLoginConfirmed()).setColor(new Color(0x00FF00)).build()
             ).setComponents(Collections.emptyList()).queue();
         } else if (componentId.startsWith(LOGIN_DENY_PREFIX)) {
             String loginToken = componentId.substring(LOGIN_DENY_PREFIX.length());
             confirmationManager.deny(loginToken);
             event.editMessageEmbeds(
-                    new EmbedBuilder().setDescription("❌ Вход отклонён, игрок кикнут с сервера.").setColor(new Color(0xFF0000)).build()
+                    new EmbedBuilder().setDescription(messages.getLoginDenied()).setColor(new Color(0xFF0000)).build()
             ).setComponents(Collections.emptyList()).queue();
         }
     }
