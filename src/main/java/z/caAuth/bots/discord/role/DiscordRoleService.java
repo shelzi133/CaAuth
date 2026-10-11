@@ -9,6 +9,7 @@ import z.caAuth.bots.discord.DiscordBot;
 import z.caAuth.config.RolesConfig;
 
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 
 public class DiscordRoleService {
@@ -34,6 +35,55 @@ public class DiscordRoleService {
                 member -> {
                     applyBindingRole(guild, member);
                     applyBindingNickname(guild, member, playerName);
+                },
+                error -> logMemberNotFound(discordId, error)
+        );
+    }
+
+    public CompletableFuture<Boolean> syncBinding(String discordId, String playerName) {
+        CompletableFuture<Boolean> result = new CompletableFuture<>();
+        Guild guild = resolveGuild();
+        if (guild == null) {
+            result.complete(false);
+            return result;
+        }
+        guild.retrieveMemberById(discordId).queue(
+                member -> {
+                    applyBindingRole(guild, member);
+                    applyBindingNickname(guild, member, playerName);
+                    result.complete(true);
+                },
+                error -> {
+                    logMemberNotFound(discordId, error);
+                    result.complete(false);
+                }
+        );
+        return result;
+    }
+
+    public void revokeBinding(String discordId) {
+        Guild guild = resolveGuild();
+        if (guild == null || discordId == null || discordId.isBlank()) return;
+
+        guild.retrieveMemberById(discordId).queue(
+                member -> {
+                    if (rolesConfig != null) {
+                        syncGroupRole(guild, member, rolesConfig.getRoleId(), false, "Роль привязки");
+                        syncGroupRole(guild, member, rolesConfig.getActiveRoleId(), false, "Роль активного игрока");
+                        syncGroupRole(guild, member, rolesConfig.getStaffId(), false, "Роль персонала");
+                        for (String group : rolesConfig.getDonateGroups()) {
+                            syncGroupRole(guild, member, rolesConfig.getRoleIdForGroup(group), false, "Донат-роль");
+                        }
+                        for (String group : rolesConfig.getStaffGroups()) {
+                            syncGroupRole(guild, member, rolesConfig.getStaffRoleIdForGroup(group), false, "Роль должности");
+                        }
+                        if (rolesConfig.isChangeNicknameEnabled() && member.getNickname() != null) {
+                            guild.modifyNickname(member, null).queue(
+                                    success -> plugin.getLogger().info("Ник сброшен у " + member.getUser().getAsTag()),
+                                    failure -> plugin.getLogger().warning("Ошибка сброса ника: " + failure.getMessage())
+                            );
+                        }
+                    }
                 },
                 error -> logMemberNotFound(discordId, error)
         );

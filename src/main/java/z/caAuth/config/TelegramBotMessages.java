@@ -28,8 +28,8 @@ public class TelegramBotMessages {
         return format(config.telegram.alreadyBound, playerName);
     }
 
-    public String getTelegramInstructions() {
-        return Colors.convertColorCodes(config.telegram.instructions);
+    public String getTelegramInstructions(boolean velocity) {
+        return Colors.convertColorCodes(velocity ? config.telegram.instructionsVelocity : config.telegram.instructions);
     }
 
     public String getTelegramCodeUsed(String playerName) {
@@ -74,6 +74,151 @@ public class TelegramBotMessages {
 
     public String getTelegramMenuUnbindCancelled() {
         return Colors.convertColorCodes(config.telegram.menuUnbindCancelled);
+    }
+
+    public String getMenuOpenButton() {
+        return config.telegram.menuOpenButton;
+    }
+
+    public String getTwinkListItem(String name, boolean pending) {
+        return config.telegram.menuTwinkListItem
+                .replace("{twink}", name)
+                .replace("{status}", pending ? config.telegram.menuTwinkStatusPending : config.telegram.menuTwinkStatusBound);
+    }
+
+    public String getTwinkListEmpty() {
+        return config.telegram.menuTwinkListEmpty;
+    }
+
+    public String getTwinkLimit(int max, String list) {
+        return config.telegram.menuTwinkLimit.replace("{max}", String.valueOf(max)).replace("{list}", list);
+    }
+
+    public String getTwinkCreated(String twink, String code, int minutes) {
+        return config.telegram.menuTwinkCreated
+                .replace("{twink}", twink)
+                .replace("{code}", code)
+                .replace("{minutes}", String.valueOf(minutes));
+    }
+
+    public String getTwinkInvalidName() {
+        return config.telegram.menuTwinkInvalidName;
+    }
+
+    public String getTwinkAlreadyBound(String twink) {
+        return config.telegram.menuTwinkAlreadyBound.replace("{twink}", twink);
+    }
+
+    public String getTwinkPending(String twink) {
+        return config.telegram.menuTwinkPending.replace("{twink}", twink);
+    }
+
+    public String getTwinkNotSeen(String twink) {
+        return config.telegram.menuTwinkNotSeen.replace("{twink}", twink);
+    }
+
+    public String getTwinkUnavailable() {
+        return config.telegram.menuTwinkUnavailable;
+    }
+
+    public String getTwinkPrompt(int free, int max, String list) {
+        return config.telegram.menuTwinkPrompt
+                .replace("{free}", String.valueOf(free))
+                .replace("{max}", String.valueOf(max))
+                .replace("{list}", list);
+    }
+
+    public String getTwinksTitle(int free, int max, String list) {
+        return config.telegram.menuTwinksTitle
+                .replace("{free}", String.valueOf(free))
+                .replace("{max}", String.valueOf(max))
+                .replace("{list}", list);
+    }
+
+    public String getTwinkAddButton() {
+        return config.telegram.menuTwinkAddButton;
+    }
+
+    public String getTwinkDeleteButton(String twink) {
+        return config.telegram.menuTwinkDeleteButton.replace("{twink}", twink);
+    }
+
+    public String getTwinkDeleteConfirm(String twink) {
+        return config.telegram.menuTwinkDeleteConfirm.replace("{twink}", twink);
+    }
+
+    public String getTwinkDeleteYesButton() {
+        return config.telegram.menuTwinkDeleteYesButton;
+    }
+
+    public String getTwinkDeleteNoButton() {
+        return config.telegram.menuTwinkDeleteNoButton;
+    }
+
+    public String getTwinkDeleted(String twink) {
+        return config.telegram.menuTwinkDeleted.replace("{twink}", twink);
+    }
+
+    public String getTwinkDeleteCancelled() {
+        return config.telegram.menuTwinkDeleteCancelled;
+    }
+
+    public String getTwinkDeleteNotFound(String twink) {
+        return config.telegram.menuTwinkDeleteNotFound.replace("{twink}", twink);
+    }
+
+    public String getMenuBackButton() {
+        return config.telegram.menuBackButton;
+    }
+
+    public String getMenuManageButton() {
+        return config.telegram.menuManageButton;
+    }
+
+    public String getMenuManageTitle() {
+        return Colors.convertColorCodes(config.telegram.menuManageTitle);
+    }
+
+    public String getMenuPasswordButton() {
+        return config.telegram.menuPasswordButton;
+    }
+
+    public String getMenuTwinkButton() {
+        return config.telegram.menuTwinkButton;
+    }
+
+    public String getMenuPasswordYesButton() {
+        return config.telegram.menuPasswordYesButton;
+    }
+
+    public String getMenuPasswordNoButton() {
+        return config.telegram.menuPasswordNoButton;
+    }
+
+    public String getTelegramMenuPasswordConfirm(String playerName) {
+        return format(config.telegram.menuPasswordConfirm, playerName);
+    }
+
+    public String getTelegramMenuPasswordSuccess(String playerName, String password) {
+        return Colors.convertColorCodes(config.telegram.menuPasswordSuccess
+                .replace("{player}", TelegramTextFormatter.escapeHtml(playerName))
+                .replace("{password}", password));
+    }
+
+    public String getTelegramMenuPasswordError() {
+        return Colors.convertColorCodes(config.telegram.menuPasswordError);
+    }
+
+    public String getTelegramMenuPasswordUnavailable() {
+        return Colors.convertColorCodes(config.telegram.menuPasswordUnavailable);
+    }
+
+    public String getTelegramMenuPasswordNotRegistered(String playerName) {
+        return format(config.telegram.menuPasswordNotRegistered, playerName);
+    }
+
+    public String getTelegramMenuPasswordCancelled() {
+        return Colors.convertColorCodes(config.telegram.menuPasswordCancelled);
     }
 
     public String getMenuUnbindButton() {
@@ -148,6 +293,12 @@ public class TelegramBotMessages {
                     "3. Отправьте этот код боту в личные сообщения\n\n" +
                     "После этого твой аккаунт будет привязан!";
 
+            public String instructionsVelocity = "**Привязка аккаунта Телеграм к Серверу**\n\n" +
+                    "1. Зайдите на сервер, код привязки (6 символов) будет выдан сразу при входе\n" +
+                    "2. Скопируйте полученный код\n" +
+                    "3. Отправьте этот код боту в личные сообщения\n\n" +
+                    "После этого ваш аккаунт будет привязан!";
+
             public String codeUsed = "❌ Этот код уже использован. Аккаунт игрока **{player}** уже привязан.";
 
             public String bindingSuccess = "✅ Аккаунт успешно привязан к игроку: **{player}**\nТеперь вы можете играть на сервере!";
@@ -170,7 +321,77 @@ public class TelegramBotMessages {
 
             public String menuUnbindCancelled = "Отвязка отменена.";
 
+            public String menuBackButton = "⬅️ Назад";
+
+            public String menuOpenButton = "📋 В меню";
+
+            public String menuTwinksTitle = "**👥 Твинки**\n\nСвободно мест: **{free}** из **{max}**.\n\n{list}";
+
+            public String menuTwinkAddButton = "➕ Добавить твинк";
+
+            public String menuTwinkDeleteButton = "🗑 {twink}";
+
+            public String menuTwinkDeleteConfirm = "⚠️ Удалить твинка **{twink}**? Он потеряет доступ к серверу и будет кикнут.";
+
+            public String menuTwinkDeleteYesButton = "✅ Да, удалить";
+
+            public String menuTwinkDeleteNoButton = "❌ Отмена";
+
+            public String menuTwinkDeleted = "✅ Твинк **{twink}** удалён.";
+
+            public String menuTwinkDeleteCancelled = "Удаление отменено.";
+
+            public String menuTwinkDeleteNotFound = "❌ Твинк **{twink}** не найден.";
+            public String menuTwinkPrompt = "➕ **Добавление твинка**\n\nОтправьте ник твинка следующим сообщением.\nСвободно мест: **{free}** из **{max}**.\n\n{list}";
+
+            public String menuTwinkListItem = "• **{twink}** — {status}";
+
+            public String menuTwinkStatusBound = "привязан";
+
+            public String menuTwinkStatusPending = "ждёт код";
+
+            public String menuTwinkListEmpty = "Твинков пока нет.";
+
+            public String menuTwinkLimit = "❌ Достигнут лимит твинков: **{max}**.\n\n{list}";
+
+            public String menuTwinkCreated = "✅ Код для твинка **{twink}**:\n```{code}```\nЗайдите твинком на сервер и отправьте этот код в чат в течение **{minutes} мин.** После этого твинк сможет играть, а подтверждения входа будут приходить сюда.";
+
+            public String menuTwinkInvalidName = "❌ Ник должен состоять из 3-16 латинских букв, цифр или знаков подчёркивания.";
+
+            public String menuTwinkAlreadyBound = "❌ Ник **{twink}** уже привязан к аккаунту.";
+
+            public String menuTwinkPending = "❌ Для ника **{twink}** уже ожидается код привязки.";
+
+            public String menuTwinkNotSeen = "❌ Игрок **{twink}** ещё не заходил на прокси-сервер. Зайдите твинком на сервер, зарегистрируйтесь и повторите.";
+
+            public String menuTwinkUnavailable = "❌ Добавление твинков сейчас недоступно.";
+
+
+            public String menuManageButton = "⚙️ Управление аккаунтом";
+
+            public String menuManageTitle = "**⚙️ Управление аккаунтом**\n\nВыберите действие:";
+
             public String menuUnbindButton = "🔓 Отвязать аккаунт";
+
+            public String menuPasswordButton = "🔑 Сменить пароль";
+
+            public String menuTwinkButton = "👥 Твинки";
+
+            public String menuPasswordYesButton = "✅ Да, сменить";
+
+            public String menuPasswordNoButton = "❌ Отмена";
+
+            public String menuPasswordConfirm = "⚠️ Сменить пароль игрока **{player}**? Старый пароль перестанет работать.";
+
+            public String menuPasswordSuccess = "✅ Новый пароль игрока **{player}**:\n```{password}```\nСмените его в игре командой /changepassword.";
+
+            public String menuPasswordError = "❌ Не удалось сменить пароль. Попробуйте позже.";
+
+            public String menuPasswordUnavailable = "❌ Смена пароля сейчас недоступна.";
+
+            public String menuPasswordNotRegistered = "❌ Игрок **{player}** не зарегистрирован в системе авторизации.";
+
+            public String menuPasswordCancelled = "Смена пароля отменена.";
 
             public String menuUnbindYesButton = "✅ Да, отвязать";
 

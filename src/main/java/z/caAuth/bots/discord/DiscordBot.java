@@ -1,32 +1,42 @@
 package z.caAuth.bots.discord;
 
-import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.entities.Activity;
 import net.dv8tion.jda.api.entities.User;
+import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent;
+import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
+import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.components.buttons.Button;
 import okhttp3.OkHttpClient;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 import z.caAuth.account.BindingType;
+import z.caAuth.banking.BankService;
 import z.caAuth.binding.BindingService;
+import z.caAuth.binding.PasswordService;
+import z.caAuth.binding.TwinkService;
 import z.caAuth.bots.BotProxy;
 import z.caAuth.bots.ChatBot;
 import z.caAuth.bots.discord.role.DiscordRoleService;
 import z.caAuth.config.AuthConfig;
 import z.caAuth.config.DiscordBotMessages;
+import z.caAuth.config.DiscordBotMessages.ButtonKey;
+import z.caAuth.config.DiscordBotMessages.EmbedType;
 import z.caAuth.config.RolesConfig;
+import z.caAuth.config.SkinsBotMessages;
+import z.caAuth.config.SkinsConfig;
 import z.caAuth.integration.placeholderapi.OnlineCounter;
 import z.caAuth.login.LoginConfirmationManager;
+import z.caAuth.skins.SkinService;
 
-import java.awt.Color;
 import java.time.Duration;
 import java.util.Collections;
+import java.util.UUID;
 
 public class DiscordBot extends ListenerAdapter implements ChatBot {
 
@@ -37,6 +47,8 @@ public class DiscordBot extends ListenerAdapter implements ChatBot {
     private final JavaPlugin plugin;
     private final LoginConfirmationManager confirmationManager;
     private final DiscordMessageHandler messageHandler;
+    private final DiscordMenu menu;
+    private final DiscordEmbeds embeds;
     private final DiscordRoleService roleService;
     private final DiscordBotMessages messages;
     private final OnlineCounter onlineCounter;
@@ -44,15 +56,17 @@ public class DiscordBot extends ListenerAdapter implements ChatBot {
     private final String guildId;
     private final AuthConfig authConfig;
     private final AuthConfig.Proxy proxy;
+    private final DiscordSkinsMenu skinsMenu;
 
     private JDA jda;
     private boolean isRunning = false;
     private BukkitTask presenceUpdateTask;
     private int lastPresenceCount = -1;
 
-    public DiscordBot(JavaPlugin plugin, BindingService bindingService, DiscordBotMessages messagesConfig,
-                      RolesConfig rolesConfig, LoginConfirmationManager confirmationManager,
-                      String token, String guildId, AuthConfig authConfig) {
+    public DiscordBot(JavaPlugin plugin, BindingService bindingService, PasswordService passwordService,
+                      TwinkService twinkService, DiscordBotMessages messagesConfig, RolesConfig rolesConfig, LoginConfirmationManager confirmationManager,
+                      String token, String guildId, AuthConfig authConfig, SkinService skinService, SkinsConfig skinsConfig,
+                      SkinsBotMessages skinsBot, BankService bankService) {
         this.plugin = plugin;
         this.confirmationManager = confirmationManager;
         this.messages = messagesConfig;
@@ -62,7 +76,11 @@ public class DiscordBot extends ListenerAdapter implements ChatBot {
         this.authConfig = authConfig;
         this.proxy = BotProxy.appliesTo(authConfig.proxy, BindingType.DISCORD) ? authConfig.proxy : null;
         this.roleService = new DiscordRoleService(plugin, bindingService, rolesConfig, this);
-        this.messageHandler = new DiscordMessageHandler(bindingService, messagesConfig, roleService);
+        bindingService.setDiscordUnbindHandler(roleService::revokeBinding);
+        this.embeds = new DiscordEmbeds(messagesConfig);
+        this.skinsMenu = new DiscordSkinsMenu(bindingService, skinService, skinsConfig, skinsBot, embeds);
+        this.menu = new DiscordMenu(bindingService, passwordService, twinkService, messagesConfig, embeds, skinsMenu, skinsBot, roleService, bankService);
+        this.messageHandler = new DiscordMessageHandler(bindingService, messagesConfig, roleService, embeds, menu, passwordService::isAvailable);
     }
 
     @Override
@@ -89,6 +107,7 @@ public class DiscordBot extends ListenerAdapter implements ChatBot {
             }
             jda = builder.build();
             jda.awaitReady();
+            registerCommands();
 
             isRunning = true;
             startPresenceUpdater();
@@ -122,6 +141,13 @@ public class DiscordBot extends ListenerAdapter implements ChatBot {
             }
             plugin.getLogger().info("Discord бот остановлен.");
         }
+    }
+
+    private void registerCommands() {
+        jda.updateCommands()
+                .addCommands(Commands.slash(DiscordMenu.COMMAND_NAME, messages.getMenuCommandDescription()))
+                .queue(success -> {}, failure -> plugin.getLogger().warning(
+                        "Не удалось зарегистрировать команды Discord бота: " + failure.getMessage()));
     }
 
     private void startPresenceUpdater() {
@@ -187,15 +213,13 @@ public class DiscordBot extends ListenerAdapter implements ChatBot {
             long snowflake = Long.parseLong(discordId.trim());
             jda.retrieveUserById(snowflake).queue(user -> {
                 user.openPrivateChannel().queue(channel -> {
-                    Button confirmBtn = Button.success(LOGIN_CONFIRM_PREFIX + token, messages.getLoginConfirmButton());
-                    Button denyBtn = Button.danger(LOGIN_DENY_PREFIX + token, messages.getLoginDenyButton());
+                    Button confirmBtn = embeds.button(ButtonKey.LOGIN_CONFIRM, LOGIN_CONFIRM_PREFIX + token,
+                            messages.getLoginConfirmButton());
+                    Button denyBtn = embeds.button(ButtonKey.LOGIN_DENY, LOGIN_DENY_PREFIX + token,
+                            messages.getLoginDenyButton());
 
-                    EmbedBuilder embed = new EmbedBuilder();
-                    embed.setTitle(messages.getLoginConfirmTitle());
-                    embed.setDescription(messages.getLoginConfirmDescription(playerName, timeoutSeconds));
-                    embed.setColor(new Color(0xFFA500));
-
-                    channel.sendMessageEmbeds(embed.build())
+                    channel.sendMessageEmbeds(embeds.embed(EmbedType.WARNING, messages.getLoginConfirmTitle(),
+                                    messages.getLoginConfirmDescription(playerName, timeoutSeconds)))
                             .addActionRow(confirmBtn, denyBtn)
                             .queue(success -> {}, failure -> plugin.getLogger().warning(
                                     "Не удалось отправить запрос подтверждения входа в Discord: " + failure.getMessage()));
@@ -213,6 +237,23 @@ public class DiscordBot extends ListenerAdapter implements ChatBot {
         }
     }
 
+    public boolean requestSkinPng(String discordId, UUID account, int slot) {
+        if (!isRunning() || discordId == null || discordId.isBlank()) return false;
+        String userId = discordId.trim();
+        try {
+            long snowflake = Long.parseLong(userId);
+            jda.retrieveUserById(snowflake).queue(user -> user.openPrivateChannel().queue(
+                    channel -> skinsMenu.sendPngRequest(channel, userId, account, slot),
+                    failure -> plugin.getLogger().warning(
+                            "Не удалось открыть личные сообщения Discord для скина: " + failure.getMessage())),
+                    failure -> plugin.getLogger().warning(
+                            "Не удалось найти Discord пользователя для скина: " + failure.getMessage()));
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
     public DiscordRoleService getRoleService() {
         return roleService;
     }
@@ -220,26 +261,51 @@ public class DiscordBot extends ListenerAdapter implements ChatBot {
     @Override
     public void onButtonInteraction(ButtonInteractionEvent event) {
         String componentId = event.getComponentId();
-        if (componentId.startsWith(LOGIN_CONFIRM_PREFIX)) {
+        if (menu.isMenuCallback(componentId)) {
+            menu.handleButton(event);
+        } else if (skinsMenu.isSkinsCallback(componentId)) {
+            skinsMenu.handleButton(event);
+        } else if (componentId.startsWith(LOGIN_CONFIRM_PREFIX)) {
             String loginToken = componentId.substring(LOGIN_CONFIRM_PREFIX.length());
             confirmationManager.confirm(loginToken);
-            event.editMessageEmbeds(
-                    new EmbedBuilder().setDescription(messages.getLoginConfirmed()).setColor(new Color(0x00FF00)).build()
-            ).setComponents(Collections.emptyList()).queue();
+            event.editMessageEmbeds(embeds.embed(EmbedType.SUCCESS, messages.getLoginConfirmed()))
+                    .setComponents(Collections.emptyList()).queue();
         } else if (componentId.startsWith(LOGIN_DENY_PREFIX)) {
             String loginToken = componentId.substring(LOGIN_DENY_PREFIX.length());
             confirmationManager.deny(loginToken);
-            event.editMessageEmbeds(
-                    new EmbedBuilder().setDescription(messages.getLoginDenied()).setColor(new Color(0xFF0000)).build()
-            ).setComponents(Collections.emptyList()).queue();
+            event.editMessageEmbeds(embeds.embed(EmbedType.ERROR, messages.getLoginDenied()))
+                    .setComponents(Collections.emptyList()).queue();
+        }
+    }
+
+    @Override
+    public void onModalInteraction(ModalInteractionEvent event) {
+        if (menu.isMenuModal(event.getModalId())) {
+            menu.handleModal(event);
+        } else if (skinsMenu.isSkinsModal(event.getModalId())) {
+            skinsMenu.handleModal(event);
+        }
+    }
+
+    @Override
+    public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
+        if (event.getName().equals(DiscordMenu.COMMAND_NAME)) {
+            menu.replyMenu(event);
         }
     }
 
     @Override
     public void onMessageReceived(MessageReceivedEvent event) {
         if (event.getAuthor().isBot()) return;
-        if (!event.isFromGuild()) {
-            messageHandler.handlePrivateMessage(event);
+        if (event.isFromGuild()) return;
+        if (menu.isMenuText(event.getMessage().getContentRaw().trim())) {
+            menu.sendMenu(event.getChannel());
+            return;
         }
+        if (skinsMenu.hasPendingPng(event.getAuthor().getId())) {
+            skinsMenu.handlePrivateMessage(event);
+            return;
+        }
+        messageHandler.handlePrivateMessage(event);
     }
 }

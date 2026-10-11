@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'z'
-version = '3.0'
+version = '3.2'
 
 repositories {
     mavenCentral()
@@ -28,6 +28,10 @@ repositories {
         name = "placeholderapi"
         url = "https://repo.extendedclip.com/content/repositories/placeholderapi/"
     }
+    maven {
+        name = "codemc"
+        url = "https://repo.codemc.io/repository/maven-releases/"
+    }
 }
 
 dependencies {
@@ -37,6 +41,8 @@ dependencies {
     implementation "org.telegram:telegrambots-abilities:6.9.7.1"
     implementation "org.xerial:sqlite-jdbc:3.44.1.0"
     compileOnly 'net.luckperms:api:5.4'
+    compileOnly 'net.skinsrestorer:skinsrestorer-api:15.12.6'
+    compileOnly files('../CalistoBanking/build/libs/CalistoBanking.jar')
     implementation("eu.okaeri:okaeri-configs-yaml-bukkit:6.1.0-beta.4")
     compileOnly("com.github.plan-player-analytics:Plan:5.8.3638")
     compileOnly 'me.clip:placeholderapi:2.11.6'

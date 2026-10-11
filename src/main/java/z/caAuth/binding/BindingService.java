@@ -4,11 +4,14 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import z.caAuth.account.AccountManager;
+import z.caAuth.account.AccountRepository;
 import z.caAuth.account.BindingType;
 import z.caAuth.config.AuthMessagesConfig;
 import z.caAuth.util.Colors;
 
+import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 public class BindingService {
 
@@ -21,13 +24,20 @@ public class BindingService {
     private final JavaPlugin plugin;
     private final AuthMessagesConfig authMessagesConfig;
     private final CodeAttemptLimiter attemptLimiter;
+    private final PlayerKicker playerKicker;
+    private volatile Consumer<String> discordUnbindHandler;
+
+    public void setDiscordUnbindHandler(Consumer<String> handler) {
+        this.discordUnbindHandler = handler;
+    }
 
     public BindingService(AccountManager accountManager, JavaPlugin plugin, AuthMessagesConfig authMessagesConfig,
-                          CodeAttemptLimiter attemptLimiter) {
+                          CodeAttemptLimiter attemptLimiter, PlayerKicker playerKicker) {
         this.accountManager = accountManager;
         this.plugin = plugin;
         this.authMessagesConfig = authMessagesConfig;
         this.attemptLimiter = attemptLimiter;
+        this.playerKicker = playerKicker;
     }
 
     public RedeemResult redeemCode(BindingType type, String bindingId, String code) {
@@ -79,19 +89,23 @@ public class BindingService {
             return false;
         }
 
-        String playerName = getPlayerName(playerUUID);
-        accountManager.unbindAccount(playerUUID);
+        List<AccountRepository.TwinkRow> twinks = accountManager.isTwink(playerUUID)
+                ? List.of()
+                : accountManager.getTwinks(playerUUID);
+        String kickMessage = authMessagesConfig.getUnbindingKick();
 
-        Bukkit.getScheduler().runTask(plugin, () -> {
-            Player player = Bukkit.getPlayer(playerUUID);
-            if (player == null) {
-                return;
-            }
-            String notifyName = playerName != null ? playerName : player.getName();
-            Colors.sendMessage(player, authMessagesConfig.getCaauthUnbindingNotifyPlayer(notifyName));
-            Colors.sendMessage(player, authMessagesConfig.getAccountNotBound());
-            Colors.sendMessage(player, authMessagesConfig.getBindingInstructions());
-        });
+        String playerName = getPlayerName(playerUUID);
+        String discordId = getDiscordId(playerUUID);
+        accountManager.unbindAccount(playerUUID);
+        accountManager.deleteTwinks(playerUUID);
+        Consumer<String> handler = discordUnbindHandler;
+        if (handler != null && discordId != null && !discordId.isBlank()) {
+            handler.accept(discordId);
+        }
+        playerKicker.kick(playerUUID, playerName, kickMessage);
+        for (AccountRepository.TwinkRow twink : twinks) {
+            playerKicker.kick(twink.uuid(), twink.name(), kickMessage);
+        }
         return true;
     }
 
@@ -100,6 +114,9 @@ public class BindingService {
     }
 
     public String getDiscordId(UUID playerUUID) {
+        if (accountManager.isTwink(playerUUID)) {
+            return null;
+        }
         return accountManager.getBindingId(playerUUID, BindingType.DISCORD);
     }
 

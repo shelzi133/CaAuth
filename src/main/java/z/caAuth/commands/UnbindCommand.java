@@ -2,24 +2,25 @@ package z.caAuth.commands;
 
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.CommandSender;
-import org.bukkit.entity.Player;
 import revxrsal.commands.annotation.Command;
 import revxrsal.commands.annotation.Optional;
 import revxrsal.commands.bukkit.actor.BukkitCommandActor;
 import revxrsal.commands.bukkit.annotation.CommandPermission;
 import z.caAuth.account.AccountManager;
 import z.caAuth.account.BindingType;
+import z.caAuth.binding.BindingService;
 import z.caAuth.config.AuthMessagesConfig;
-import z.caAuth.util.Colors;
 
 import java.util.UUID;
 
 public class UnbindCommand {
     private final AccountManager accountManager;
+    private final BindingService bindingService;
     private final AuthMessagesConfig authMessagesConfig;
 
-    public UnbindCommand(AccountManager accountManager, AuthMessagesConfig authMessagesConfig) {
+    public UnbindCommand(AccountManager accountManager, BindingService bindingService, AuthMessagesConfig authMessagesConfig) {
         this.accountManager = accountManager;
+        this.bindingService = bindingService;
         this.authMessagesConfig = authMessagesConfig;
     }
 
@@ -41,15 +42,8 @@ public class UnbindCommand {
 
         BindingType bindingType = accountManager.getBindingType(playerUUID);
         String bindingId = accountManager.getBindingId(playerUUID);
-        accountManager.unbindAccount(playerUUID);
+        bindingService.unbindAccount(playerUUID);
         sender.sendMessage(authMessagesConfig.getCaauthUnbindingSuccess(playerName));
         sender.sendMessage(authMessagesConfig.getCaauthUnbindingType() + (bindingType != null ? bindingType.getDisplayName() : "?") + " §7(ID: §f" + bindingId + "§7)");
-
-        Player onlinePlayer = target.getPlayer();
-        if (onlinePlayer != null && onlinePlayer.isOnline()) {
-            Colors.sendMessage(onlinePlayer, authMessagesConfig.getCaauthUnbindingNotifyPlayer(playerName));
-            Colors.sendMessage(onlinePlayer, authMessagesConfig.getAccountNotBound());
-            Colors.sendMessage(onlinePlayer, authMessagesConfig.getBindingInstructions());
-        }
     }
 }

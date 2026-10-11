@@ -1,17 +1,17 @@
 package z.caAuth.bots.discord;
 
-import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import z.caAuth.account.BindingType;
 import z.caAuth.binding.BindingService;
 import z.caAuth.binding.BindingService.RedeemResult;
 import z.caAuth.bots.discord.role.DiscordRoleService;
 import z.caAuth.config.DiscordBotMessages;
-import z.caAuth.util.Colors;
+import z.caAuth.config.DiscordBotMessages.EmbedType;
 
-import java.awt.Color;
 import java.util.UUID;
+import java.util.function.BooleanSupplier;
 import java.util.regex.Pattern;
+
 
 public class DiscordMessageHandler {
 
@@ -20,12 +20,19 @@ public class DiscordMessageHandler {
     private final BindingService bindingService;
     private final DiscordBotMessages messagesConfig;
     private final DiscordRoleService roleService;
+    private final DiscordEmbeds embeds;
+    private final DiscordMenu menu;
+    private final BooleanSupplier velocityMode;
 
     public DiscordMessageHandler(BindingService bindingService, DiscordBotMessages messagesConfig,
-                                 DiscordRoleService roleService) {
+                                 DiscordRoleService roleService, DiscordEmbeds embeds, DiscordMenu menu,
+                                 BooleanSupplier velocityMode) {
+        this.velocityMode = velocityMode;
         this.bindingService = bindingService;
         this.messagesConfig = messagesConfig;
         this.roleService = roleService;
+        this.embeds = embeds;
+        this.menu = menu;
     }
 
     public void handlePrivateMessage(MessageReceivedEvent event) {
@@ -35,14 +42,14 @@ public class DiscordMessageHandler {
         UUID existingPlayerUUID = bindingService.getPlayerByBinding(BindingType.DISCORD, discordId);
         if (existingPlayerUUID != null) {
             String playerName = resolvePlayerName(existingPlayerUUID);
-            sendDiscordMessage(event, messagesConfig.getDiscordAlreadyBound(playerName));
+            send(event, EmbedType.INFO, messagesConfig.getDiscordAlreadyBound(playerName));
             return;
         }
 
         if (CODE_PATTERN.matcher(message).matches()) {
             handleVerificationCode(event, message, discordId);
         } else {
-            sendDiscordMessage(event, messagesConfig.getDiscordInstructions());
+            send(event, EmbedType.INFO, messagesConfig.getDiscordInstructions(velocityMode.getAsBoolean()));
         }
     }
 
@@ -51,14 +58,16 @@ public class DiscordMessageHandler {
         switch (result.status()) {
             case BOUND -> {
                 String playerName = resolvePlayerName(result.playerUUID());
-                sendDiscordMessage(event, messagesConfig.getDiscordBindingSuccess(playerName));
+                send(event, EmbedType.SUCCESS, messagesConfig.getDiscordBindingSuccess(playerName));
+                menu.sendMenu(event.getChannel());
                 roleService.assignRoleAndNicknameIfEnabled(discordId, result.playerUUID(), playerName);
             }
-            case INVALID_CODE -> sendDiscordMessage(event, messagesConfig.getDiscordInvalidCode());
-            case LOCKED -> sendDiscordMessage(event, messagesConfig.getDiscordTooManyAttempts(result.lockedMinutes()));
-            case ALREADY_BOUND -> sendDiscordMessage(event,
+            case INVALID_CODE -> send(event, EmbedType.ERROR, messagesConfig.getDiscordInvalidCode());
+            case LOCKED -> send(event, EmbedType.WARNING,
+                    messagesConfig.getDiscordTooManyAttempts(result.lockedMinutes()));
+            case ALREADY_BOUND -> send(event, EmbedType.ERROR,
                     messagesConfig.getDiscordCodeUsed(resolvePlayerName(result.playerUUID())));
-            case BINDING_FAILED -> sendDiscordMessage(event, messagesConfig.getDiscordBindingError());
+            case BINDING_FAILED -> send(event, EmbedType.ERROR, messagesConfig.getDiscordBindingError());
         }
     }
 
@@ -67,22 +76,10 @@ public class DiscordMessageHandler {
         return name != null && !name.isBlank() ? name : playerUUID.toString();
     }
 
-    private void sendDiscordMessage(MessageReceivedEvent event, String text) {
-        if (text == null || text.isEmpty()) return;
-
-        if (Colors.containsHexColors(text)) {
-            String hexColor = Colors.extractHexColor(text);
-            int colorInt = hexColor != null ? Colors.hexToInt(hexColor) : -1;
-            String cleanText = Colors.processDiscordColors(text);
-
-            EmbedBuilder embed = new EmbedBuilder();
-            embed.setDescription(cleanText);
-            if (colorInt != -1) {
-                embed.setColor(new Color(colorInt));
-            }
-            event.getChannel().sendMessageEmbeds(embed.build()).queue();
-        } else {
-            event.getChannel().sendMessage(text).queue();
+    private void send(MessageReceivedEvent event, EmbedType type, String text) {
+        if (text == null || text.isEmpty()) {
+            return;
         }
+        event.getChannel().sendMessageEmbeds(embeds.embed(type, text)).queue();
     }
 }

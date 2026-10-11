@@ -89,7 +89,7 @@ public class AuthMessagesConfig extends OkaeriConfig {
         public String noBound = "У игрока {player} аккаунт не привязан";
         public String success = "Аккаунт игрока {player} успешно отвязан!";
         public String type = "Тип привязки:";
-        public String notifyPlayer = "Ваш аккаунт был отвязан администратором!";
+        public String kick = "Ваш аккаунт был отвязан. Зайдите на сервер снова и привяжите аккаунт заново.";
     }
 
     public static class LoginConfirmation extends OkaeriConfig {
@@ -313,8 +313,8 @@ public class AuthMessagesConfig extends OkaeriConfig {
         return getPrefix() + colorize(unbinding.type);
     }
 
-    public String getCaauthUnbindingNotifyPlayer(String playerName) {
-        return getPrefix() + colorize(unbinding.notifyPlayer.replace("{player}", playerName));
+    public String getUnbindingKick() {
+        return getErrorPrefix() + colorize(unbinding.kick);
     }
 
     public String getLoginConfirmationSentDiscord(int timeoutSeconds) {

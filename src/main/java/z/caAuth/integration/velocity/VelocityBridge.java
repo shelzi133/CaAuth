@@ -8,6 +8,7 @@ import com.sun.net.httpserver.HttpServer;
 import org.bukkit.plugin.java.JavaPlugin;
 import z.caAuth.account.AccountManager;
 import z.caAuth.account.BindingType;
+import z.caAuth.binding.TwinkService;
 import z.caAuth.config.AuthConfig;
 import z.caAuth.config.MainConfig;
 import z.caAuth.login.LoginConfirmationManager;
@@ -32,6 +33,7 @@ public class VelocityBridge {
     private final AuthConfig authConfig;
     private final AccountManager accountManager;
     private final LoginConfirmationManager confirmationManager;
+    private final TwinkService twinkService;
 
     private HttpServer httpServer;
     private ExecutorService executor;
@@ -39,12 +41,13 @@ public class VelocityBridge {
 
     public VelocityBridge(JavaPlugin plugin, MainConfig mainConfig, AuthConfig authConfig,
                           AccountManager accountManager,
-                          LoginConfirmationManager confirmationManager) {
+                          LoginConfirmationManager confirmationManager, TwinkService twinkService) {
         this.plugin = plugin;
         this.mainConfig = mainConfig;
         this.authConfig = authConfig;
         this.accountManager = accountManager;
         this.confirmationManager = confirmationManager;
+        this.twinkService = twinkService;
     }
 
     @FunctionalInterface
@@ -77,6 +80,7 @@ public class VelocityBridge {
             httpServer.createContext("/bind/status", endpoint(this::bindStatus));
             httpServer.createContext("/confirm", endpoint(this::confirm));
             httpServer.createContext("/cancel", endpoint(this::cancel));
+            httpServer.createContext("/twink/redeem", endpoint(this::redeemTwink));
             httpServer.setExecutor(executor);
             httpServer.start();
             plugin.getLogger().info("API для Velocity запущено на " + settings.host + ":" + settings.port);
@@ -107,13 +111,29 @@ public class VelocityBridge {
         response.addProperty("timeoutSeconds", confirmationManager.getTimeoutSeconds());
 
         if (!accountManager.isAccountBound(uuid)) {
-            response.addProperty("action", "BIND");
+            boolean twinkInvite = twinkService.hasActiveInvite(string(request, "name"));
+            response.addProperty("action", twinkInvite ? "TWINK" : "BIND");
             return response;
         }
 
         BindingType type = accountManager.getBindingType(uuid);
         response.addProperty("type", type != null ? type.getId() : null);
         response.addProperty("action", needsConfirmation(uuid, ip) ? "CONFIRM" : "ALLOW");
+        return response;
+    }
+
+    private JsonObject redeemTwink(JsonObject request) {
+        UUID uuid = uuid(request);
+        String ip = string(request, "ip");
+
+        TwinkService.RedeemResult result = twinkService.redeem(uuid, string(request, "name"), string(request, "code"));
+        if (result.status() == TwinkService.RedeemStatus.BOUND) {
+            stamp(uuid, ip);
+        }
+
+        JsonObject response = new JsonObject();
+        response.addProperty("result", result.status().name());
+        response.addProperty("minutes", result.lockedMinutes());
         return response;
     }
 
@@ -140,8 +160,12 @@ public class VelocityBridge {
             stamp(uuid, ip);
         }
 
+        boolean twinkInvite = !bound && request.has("name")
+                && twinkService.hasActiveInvite(request.get("name").getAsString());
+
         JsonObject response = new JsonObject();
         response.addProperty("bound", bound);
+        response.addProperty("twink", twinkInvite);
         return response;
     }
 

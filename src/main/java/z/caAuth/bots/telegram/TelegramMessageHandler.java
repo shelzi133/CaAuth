@@ -6,6 +6,7 @@ import z.caAuth.binding.BindingService.RedeemResult;
 import z.caAuth.config.TelegramBotMessages;
 
 import java.util.UUID;
+import java.util.function.BooleanSupplier;
 import java.util.regex.Pattern;
 
 public class TelegramMessageHandler {
@@ -15,12 +16,16 @@ public class TelegramMessageHandler {
     private final BindingService bindingService;
     private final TelegramBotMessages messagesConfig;
     private final TelegramSender sender;
+    private final TelegramMenu menu;
+    private final BooleanSupplier velocityMode;
 
     public TelegramMessageHandler(BindingService bindingService, TelegramBotMessages messagesConfig,
-                                   TelegramSender sender) {
+                                   TelegramSender sender, TelegramMenu menu, BooleanSupplier velocityMode) {
+        this.velocityMode = velocityMode;
         this.bindingService = bindingService;
         this.messagesConfig = messagesConfig;
         this.sender = sender;
+        this.menu = menu;
     }
 
     public void handleMessage(String text, String telegramId, String chatId) {
@@ -34,14 +39,17 @@ public class TelegramMessageHandler {
         if (CODE_PATTERN.matcher(text).matches()) {
             handleVerificationCode(text, telegramId, chatId);
         } else {
-            sendHtml(chatId, messagesConfig.getTelegramInstructions());
+            sendHtml(chatId, messagesConfig.getTelegramInstructions(velocityMode.getAsBoolean()));
         }
     }
 
     private void handleVerificationCode(String code, String telegramId, String chatId) {
         RedeemResult result = bindingService.redeemCode(BindingType.TELEGRAM, telegramId, code);
         switch (result.status()) {
-            case BOUND -> sendHtml(chatId, messagesConfig.getTelegramBindingSuccess(result.playerName()));
+            case BOUND -> {
+                sendHtml(chatId, messagesConfig.getTelegramBindingSuccess(result.playerName()));
+                menu.sendMenu(chatId);
+            }
             case INVALID_CODE -> sender.sendMessage(chatId, messagesConfig.getTelegramInvalidCode(), false);
             case LOCKED -> sendHtml(chatId, messagesConfig.getTelegramTooManyAttempts(result.lockedMinutes()));
             case ALREADY_BOUND -> sendHtml(chatId, messagesConfig.getTelegramCodeUsed(result.playerName()));

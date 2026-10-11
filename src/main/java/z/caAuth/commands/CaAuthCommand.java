@@ -21,6 +21,8 @@ import z.caAuth.config.AuthMessagesConfig;
 import z.caAuth.config.DiscordBotMessages;
 import z.caAuth.config.MainConfig;
 import z.caAuth.config.RolesConfig;
+import z.caAuth.config.SkinsBotMessages;
+import z.caAuth.config.SkinsConfig;
 import z.caAuth.config.TelegramBotMessages;
 
 import java.net.InetSocketAddress;
@@ -41,11 +43,14 @@ public class CaAuthCommand {
     private final AccountManager accountManager;
     private final BotManager botManager;
     private final BindingLookup lookup;
+    private final SkinsConfig skinsConfig;
+    private final SkinsBotMessages skinsBotMessages;
 
     public CaAuthCommand(JavaPlugin plugin, AuthConfig authConfig, AuthMessagesConfig authMessagesConfig,
                          DiscordBotMessages discordBotMessages, TelegramBotMessages telegramBotMessages,
                          RolesConfig rolesConfig, AccountManager accountManager, MainConfig mainConfig,
-                         BotManager botManager, BindingLookup lookup) {
+                         BotManager botManager, BindingLookup lookup, SkinsConfig skinsConfig,
+                         SkinsBotMessages skinsBotMessages) {
         this.plugin = plugin;
         this.authConfig = authConfig;
         this.authMessagesConfig = authMessagesConfig;
@@ -56,6 +61,8 @@ public class CaAuthCommand {
         this.mainConfig = mainConfig;
         this.botManager = botManager;
         this.lookup = lookup;
+        this.skinsConfig = skinsConfig;
+        this.skinsBotMessages = skinsBotMessages;
     }
 
     @CommandPlaceholder
@@ -74,6 +81,8 @@ public class CaAuthCommand {
         CommandSender sender = actor.sender();
 
         boolean authReloaded = authConfig.reload();
+        boolean skinsReloaded = skinsConfig.reload();
+        skinsBotMessages.reload();
 
         authMessagesConfig.reload();
         telegramBotMessages.reload();
@@ -81,6 +90,10 @@ public class CaAuthCommand {
         rolesConfig.reload();
         mainConfig.reload();
 
+        if (!skinsReloaded) {
+            sender.sendMessage(authMessagesConfig.getErrorPrefix()
+                    + "Не удалось перезагрузить конфиг скинов (skins/skins-config.yml)");
+        }
         if (authReloaded) {
             sender.sendMessage(authMessagesConfig.getConfigReloaded());
         } else {

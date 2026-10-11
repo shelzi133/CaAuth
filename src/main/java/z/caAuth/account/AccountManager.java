@@ -4,6 +4,7 @@ import org.bukkit.entity.Player;
 import z.caAuth.config.AuthConfig;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -98,5 +99,68 @@ public class AccountManager {
 
     public void setActiveRoleOverridden(UUID playerUUID, boolean overridden) {
         storage.setOverridden(playerUUID, overridden);
+    }
+
+    public boolean isNameBound(String playerName) {
+        return storage.getBoundPlayerByName(playerName) != null;
+    }
+
+    public boolean isTwink(UUID playerUUID) {
+        return storage.getOwner(playerUUID) != null;
+    }
+
+    public List<AccountRepository.TwinkRow> getTwinks(UUID ownerUUID) {
+        return storage.getTwinks(ownerUUID);
+    }
+
+    public void bindTwink(UUID twinkUUID, UUID ownerUUID, BindingType type, String bindingId, String twinkName) {
+        storage.bindTwink(twinkUUID, ownerUUID, type.getId(), bindingId, twinkName);
+    }
+
+    public void deleteTwinks(UUID ownerUUID) {
+        storage.deleteTwinks(ownerUUID);
+        storage.deleteInvites(ownerUUID);
+    }
+
+    public void createInvite(String twinkName, UUID ownerUUID, String code) {
+        storage.createInvite(twinkName.toLowerCase(Locale.ROOT), twinkName, ownerUUID, code,
+                System.currentTimeMillis() / 1000L);
+    }
+
+    public AccountRepository.Invite findInvite(String twinkName) {
+        return storage.findInvite(twinkName.toLowerCase(Locale.ROOT), inviteNotBefore());
+    }
+
+    public List<AccountRepository.Invite> getInvites(UUID ownerUUID) {
+        return storage.getInvites(ownerUUID, inviteNotBefore());
+    }
+
+    public boolean isInviteCodeTaken(String code) {
+        return storage.isInviteCodeTaken(code, inviteNotBefore());
+    }
+
+    public void deleteInvite(String twinkName) {
+        storage.deleteInvite(twinkName.toLowerCase(Locale.ROOT));
+    }
+
+    public List<SkinProfile> getSkinProfiles(UUID playerUUID) {
+        return storage.getSkinProfiles(playerUUID);
+    }
+
+    public SkinProfile getSkinProfile(UUID playerUUID, int slot) {
+        return storage.getSkinProfile(playerUUID, slot);
+    }
+
+    public void saveSkinProfile(UUID playerUUID, SkinProfile profile) {
+        storage.saveSkinProfile(playerUUID, profile);
+    }
+
+    public void deleteSkinProfile(UUID playerUUID, int slot) {
+        storage.deleteSkinProfile(playerUUID, slot);
+    }
+
+    private long inviteNotBefore() {
+        long lifetimeSeconds = Math.max(1, authConfig.bots.twink.inviteLifetimeMinutes) * 60L;
+        return System.currentTimeMillis() / 1000L - lifetimeSeconds;
     }
 }

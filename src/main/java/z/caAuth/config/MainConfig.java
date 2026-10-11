@@ -28,6 +28,12 @@ public class MainConfig extends OkaeriConfig {
 
     public static class Module extends OkaeriConfig {
         public MainConfig.Auth auth = new MainConfig.Auth();
+        public MainConfig.Skins skins = new MainConfig.Skins();
+    }
+
+    public static class Skins extends OkaeriConfig {
+        @Comment("Вкл/выкл скины: команда /caauth skins, кнопки в ботах. Нужен плагин SkinsRestorer, настройка в папке skins")
+        public boolean enabled = true;
     }
 
     public static class Auth extends OkaeriConfig {
@@ -46,6 +52,15 @@ public class MainConfig extends OkaeriConfig {
         public int port = 25599;
         @Comment("Секретный ключ, такой же должен быть в config.yml плагина CaAuthVelocity")
         public String secret = UUID.randomUUID().toString();
+        @Comment("Входящий API плагина CaAuthVelocity: кик игрока при отвязке и смена пароля в tiAuth. Должен совпадать с inbound в его config.yml")
+        public ProxyApi proxyApi = new ProxyApi();
+    }
+
+    public static class ProxyApi extends OkaeriConfig {
+        public String host = "127.0.0.1";
+        public int port = 25600;
+        @Comment("Сколько секунд ждать ответ Velocity")
+        public int timeoutSeconds = 10;
     }
 
 }

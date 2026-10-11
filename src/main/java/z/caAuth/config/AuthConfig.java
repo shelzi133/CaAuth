@@ -27,6 +27,20 @@ public class AuthConfig extends OkaeriConfig {
         public Telegram telegram = new Telegram();
         public LoginConfirmation loginConfirmation = new LoginConfirmation();
         public BindingCode bindingCode = new BindingCode();
+        public PasswordChange passwordChange = new PasswordChange();
+        public Twink twink = new Twink();
+    }
+
+    public static class Twink extends OkaeriConfig {
+        @Comment("Сколько твинков можно привязать к одному аккаунту (включая ожидающих код)")
+        public int maxCount = 2;
+        @Comment("Сколько минут действует код привязки твинка")
+        public int inviteLifetimeMinutes = 15;
+    }
+
+    public static class PasswordChange extends OkaeriConfig {
+        @Comment("Длина пароля, который бот выдаёт при смене пароля (минимум 8)")
+        public int length = 16;
     }
 
     public static class BindingCode extends OkaeriConfig {

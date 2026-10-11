@@ -4,9 +4,12 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.telegram.telegrambots.bots.DefaultBotOptions;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
+import org.telegram.telegrambots.meta.api.methods.GetFile;
 import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
 import org.telegram.telegrambots.meta.api.methods.groupadministration.GetChat;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
+import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageReplyMarkup;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Chat;
@@ -16,15 +19,25 @@ import org.telegram.telegrambots.meta.api.objects.commands.BotCommand;
 import org.telegram.telegrambots.meta.api.objects.commands.scope.BotCommandScopeDefault;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import z.caAuth.account.BindingType;
+import z.caAuth.banking.BankService;
 import z.caAuth.binding.BindingService;
+import z.caAuth.binding.PasswordService;
+import z.caAuth.binding.TwinkService;
 import z.caAuth.bots.ChatBot;
+import z.caAuth.config.SkinsBotMessages;
+import z.caAuth.config.SkinsConfig;
 import z.caAuth.config.TelegramBotMessages;
 import z.caAuth.login.LoginConfirmationManager;
+import z.caAuth.skins.SkinService;
 
+import java.io.File;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 public class TelegramBot extends TelegramLongPollingBot implements TelegramSender, ChatBot {
 
@@ -35,20 +48,24 @@ public class TelegramBot extends TelegramLongPollingBot implements TelegramSende
     private final LoginConfirmationManager confirmationManager;
     private final TelegramMessageHandler messageHandler;
     private final TelegramMenu menu;
+    private final TelegramSkinsMenu skins;
     private final TelegramBotMessages messages;
     private final String token;
 
     private boolean isRunning = false;
 
-    public TelegramBot(JavaPlugin plugin, BindingService bindingService, TelegramBotMessages messagesConfig,
-                       LoginConfirmationManager confirmationManager, String token, DefaultBotOptions options) {
+    public TelegramBot(JavaPlugin plugin, BindingService bindingService, PasswordService passwordService,
+                       TwinkService twinkService, TelegramBotMessages messagesConfig, LoginConfirmationManager confirmationManager,
+                       String token, DefaultBotOptions options, SkinService skinService, SkinsConfig skinsConfig,
+                       SkinsBotMessages skinsBot, BankService bankService) {
         super(options);
         this.plugin = plugin;
         this.confirmationManager = confirmationManager;
         this.token = token;
         this.messages = messagesConfig;
-        this.messageHandler = new TelegramMessageHandler(bindingService, messagesConfig, this);
-        this.menu = new TelegramMenu(bindingService, messagesConfig, this);
+        this.skins = new TelegramSkinsMenu(bindingService, skinService, skinsConfig, skinsBot, this);
+        this.menu = new TelegramMenu(bindingService, passwordService, twinkService, messagesConfig, this, skins, skinsBot, bankService);
+        this.messageHandler = new TelegramMessageHandler(bindingService, messagesConfig, this, menu, passwordService::isAvailable);
     }
 
     @Override
@@ -76,12 +93,37 @@ public class TelegramBot extends TelegramLongPollingBot implements TelegramSende
             String telegramId = String.valueOf(message.getFrom().getId());
             String chatId = String.valueOf(message.getChatId());
 
+            if (text.startsWith("/")) {
+                menu.cancelNickInput(telegramId);
+                skins.cancelInput(telegramId);
+            } else if (menu.isAwaitingNick(telegramId)) {
+                menu.handleNickInput(telegramId, chatId, text);
+                return;
+            } else if (menu.isAwaitingTransfer(telegramId)) {
+                menu.handleTransferInput(telegramId, chatId, text);
+                return;
+            } else if (skins.isAwaitingInput(telegramId)) {
+                skins.handleText(telegramId, chatId, text);
+                return;
+            }
+
             if (menu.isMenuCommand(text)) {
                 menu.sendMenu(chatId);
                 return;
             }
 
             messageHandler.handleMessage(text, telegramId, chatId);
+            return;
+        }
+        if (update.hasMessage() && update.getMessage().hasDocument()) {
+            Message message = update.getMessage();
+            if (message.getChat().isGroupChat() || message.getChat().isSuperGroupChat()) {
+                return;
+            }
+            String telegramId = String.valueOf(message.getFrom().getId());
+            if (skins.isAwaitingInput(telegramId)) {
+                skins.handleDocument(telegramId, String.valueOf(message.getChatId()), message.getDocument());
+            }
         }
     }
 
@@ -104,9 +146,14 @@ public class TelegramBot extends TelegramLongPollingBot implements TelegramSende
             editToStatusText(chatId, messageId, messages.getLoginDenied());
             return;
         }
+        if (skins.isSkinsCallback(data)) {
+            answerCallbackQuery(callbackQuery.getId(), null);
+            skins.handleCallback(data, String.valueOf(callbackQuery.getFrom().getId()), chatId, messageId);
+            return;
+        }
         if (menu.isMenuCallback(data)) {
             answerCallbackQuery(callbackQuery.getId(), null);
-            menu.handleCallback(data, String.valueOf(callbackQuery.getFrom().getId()), chatId);
+            menu.handleCallback(data, String.valueOf(callbackQuery.getFrom().getId()), chatId, messageId);
             return;
         }
         answerCallbackQuery(callbackQuery.getId(), messages.getUnknownAction());
@@ -220,6 +267,71 @@ public class TelegramBot extends TelegramLongPollingBot implements TelegramSende
     @Override
     public void sendMessage(String chatId, String text, boolean useHtml) {
         sendMessage(chatId, text, useHtml, null);
+    }
+
+    @Override
+    public void editMessage(String chatId, Integer messageId, String text, boolean useHtml,
+                            InlineKeyboardMarkup keyboard) {
+        EditMessageText edit = new EditMessageText();
+        edit.setChatId(chatId);
+        edit.setMessageId(messageId);
+        edit.setText(text);
+        if (useHtml) {
+            edit.setParseMode("HTML");
+        }
+        edit.setReplyMarkup(keyboard);
+        try {
+            execute(edit);
+        } catch (TelegramApiException e) {
+            plugin.getLogger().warning("Ошибка при редактировании сообщения: " + e.getMessage());
+        }
+    }
+
+    public boolean requestSkinPng(String telegramId, UUID account, int slot) {
+        if (!isRunning() || telegramId == null || telegramId.isBlank()) {
+            return false;
+        }
+        skins.requestPng(telegramId.trim(), account, slot);
+        return true;
+    }
+
+    @Override
+    public void sendPhoto(String chatId, String photoUrl, String caption, InlineKeyboardMarkup keyboard) {
+        SendPhoto photo = new SendPhoto();
+        photo.setChatId(chatId);
+        photo.setPhoto(new InputFile(photoUrl));
+        photo.setCaption(caption);
+        photo.setParseMode("HTML");
+        photo.setReplyMarkup(keyboard);
+        try {
+            execute(photo);
+        } catch (TelegramApiException e) {
+            plugin.getLogger().warning("Ошибка при отправке фото скина в Telegram: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public byte[] fetchFile(String fileId) throws Exception {
+        GetFile getFile = new GetFile();
+        getFile.setFileId(fileId);
+        File file = downloadFile(execute(getFile));
+        try {
+            return Files.readAllBytes(file.toPath());
+        } finally {
+            Files.deleteIfExists(file.toPath());
+        }
+    }
+
+    @Override
+    public void clearKeyboard(String chatId, Integer messageId) {
+        EditMessageReplyMarkup edit = new EditMessageReplyMarkup();
+        edit.setChatId(chatId);
+        edit.setMessageId(messageId);
+        try {
+            execute(edit);
+        } catch (TelegramApiException e) {
+            plugin.getLogger().warning("Ошибка при удалении кнопок сообщения: " + e.getMessage());
+        }
     }
 
     @Override

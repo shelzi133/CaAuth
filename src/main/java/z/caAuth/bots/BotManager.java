@@ -8,16 +8,23 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.BotSession;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 import z.caAuth.account.BindingType;
+import z.caAuth.banking.BankService;
 import z.caAuth.binding.BindingService;
+import z.caAuth.binding.PasswordService;
+import z.caAuth.binding.TwinkService;
 import z.caAuth.bots.discord.DiscordBot;
 import z.caAuth.bots.telegram.TelegramBot;
 import z.caAuth.config.AuthConfig;
 import z.caAuth.config.DiscordBotMessages;
 import z.caAuth.config.MainConfig;
 import z.caAuth.config.RolesConfig;
+import z.caAuth.config.SkinsBotMessages;
+import z.caAuth.config.SkinsConfig;
 import z.caAuth.config.TelegramBotMessages;
 import z.caAuth.login.LoginConfirmationManager;
+import z.caAuth.skins.SkinService;
 
+import java.util.UUID;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class BotManager {
@@ -41,6 +48,12 @@ public class BotManager {
     private final DiscordBotMessages discordBotMessages;
     private final RolesConfig rolesConfig;
     private final BindingService bindingService;
+    private final PasswordService passwordService;
+    private final TwinkService twinkService;
+    private final SkinService skinService;
+    private final SkinsConfig skinsConfig;
+    private final SkinsBotMessages skinsBot;
+    private final BankService bankService;
 
     private final ReentrantLock discordLock = new ReentrantLock();
     private final ReentrantLock telegramLock = new ReentrantLock();
@@ -51,7 +64,10 @@ public class BotManager {
 
     public BotManager(JavaPlugin plugin, AuthConfig authConfig, LoginConfirmationManager loginConfirmationManager,
                       TelegramBotMessages telegramBotMessages, DiscordBotMessages discordBotMessages,
-                      RolesConfig rolesConfig, BindingService bindingService, MainConfig mainConfig) {
+                      RolesConfig rolesConfig, BindingService bindingService, PasswordService passwordService,
+                      TwinkService twinkService, MainConfig mainConfig, SkinService skinService, SkinsConfig skinsConfig,
+                      SkinsBotMessages skinsBot, BankService bankService) {
+        this.bankService = bankService;
         this.plugin = plugin;
         this.authConfig = authConfig;
         this.loginConfirmationManager = loginConfirmationManager;
@@ -59,7 +75,12 @@ public class BotManager {
         this.discordBotMessages = discordBotMessages;
         this.rolesConfig = rolesConfig;
         this.bindingService = bindingService;
+        this.passwordService = passwordService;
+        this.twinkService = twinkService;
         this.mainConfig = mainConfig;
+        this.skinService = skinService;
+        this.skinsConfig = skinsConfig;
+        this.skinsBot = skinsBot;
     }
 
     public void startBots() {
@@ -218,11 +239,11 @@ public class BotManager {
 
     private boolean launchDiscord() {
         try {
-            DiscordBot bot = new DiscordBot(plugin, bindingService, discordBotMessages, rolesConfig,
+            DiscordBot bot = new DiscordBot(plugin, bindingService, passwordService, twinkService, discordBotMessages, rolesConfig,
                     loginConfirmationManager,
                     authConfig.bots.discord.token,
                     authConfig.bots.discord.guildId,
-                    authConfig);
+                    authConfig, skinService, skinsConfig, skinsBot, bankService);
             discordBot = bot;
             bot.start();
             loginConfirmationManager.registerBot(bot);
@@ -258,8 +279,8 @@ public class BotManager {
                 plugin.getLogger().info("Telegram бот запускается через прокси "
                         + proxy.host + ":" + proxy.port + " (" + proxy.type + ")");
             }
-            TelegramBot bot = new TelegramBot(plugin, bindingService, telegramBotMessages, loginConfirmationManager,
-                    authConfig.bots.telegram.token, options);
+            TelegramBot bot = new TelegramBot(plugin, bindingService, passwordService, twinkService, telegramBotMessages, loginConfirmationManager,
+                    authConfig.bots.telegram.token, options, skinService, skinsConfig, skinsBot, bankService);
             telegramBot = bot;
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
             telegramBotSession = botsApi.registerBot(bot);
@@ -320,6 +341,18 @@ public class BotManager {
         if (authConfig.bots.telegram.enabled && authConfig.bots.telegram.token.isEmpty()) {
             plugin.getLogger().warning("Telegram бот включен, но токен не настроен! Установите токен в config.yml");
         }
+    }
+
+    public boolean requestSkinPng(BindingType type, String bindingId, UUID account, int slot) {
+        if (type == null || bindingId == null) {
+            return false;
+        }
+        if (type == BindingType.DISCORD) {
+            DiscordBot bot = discordBot;
+            return bot != null && bot.requestSkinPng(bindingId, account, slot);
+        }
+        TelegramBot bot = telegramBot;
+        return bot != null && bot.requestSkinPng(bindingId, account, slot);
     }
 
     public ChatBot getBot(BindingType type) {

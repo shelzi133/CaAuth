@@ -1,7 +1,7 @@
 name: CaAuth
 version: '${version}'
 main: z.caAuth.CaAuth
-softdepend: [LuckPerms, Plan, PlaceholderAPI, SuperVanish, PremiumVanish]
+softdepend: [LuckPerms, Plan, PlaceholderAPI, SuperVanish, PremiumVanish, SkinsRestorer, CalistoBanking]
 api-version: '26.3'
 description: Привязка аккаунта к Discord/Telegram + переподтверждение входа
 
@@ -20,6 +20,9 @@ commands:
   activityplayer:
     description: Получение роли активного игрока
     usage: /<command> [игрок]
+  skins:
+    description: Меню скинов игрока
+    usage: /<command>
 
 
 permissions:
