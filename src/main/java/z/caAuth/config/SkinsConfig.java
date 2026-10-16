@@ -125,6 +125,7 @@ public class SkinsConfig extends OkaeriConfig {
         public String invalidNick = "Неверный ник. Допустимы латинские буквы, цифры и _, от 3 до 16 символов.";
         public String invalidUrl = "Неверная ссылка. Нужна ссылка, начинающаяся с &#FF7083http:// &fили &#FF7083https://&f.";
         public String notFound = "Ник &#FF7083{input} &fне найден.";
+        public String playerNotFound = "Игрок &#FF7083{player} &fникогда не заходил на сервер.";
         public String setSuccess = "Скин сохранён в профиль &#FFC0E4{slot}&f. Наденьте его ЛКМ по профилю.";
         public String saveError = "Не удалось сохранить скин. Попробуйте позже.";
     }

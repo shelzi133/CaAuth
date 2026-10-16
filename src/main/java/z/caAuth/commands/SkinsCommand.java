@@ -1,8 +1,10 @@
 package z.caAuth.commands;
 
+import org.bukkit.OfflinePlayer;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import revxrsal.commands.annotation.Command;
+import revxrsal.commands.annotation.Optional;
 import revxrsal.commands.bukkit.actor.BukkitCommandActor;
 import z.caAuth.config.AuthMessagesConfig;
 import z.caAuth.config.SkinsConfig;
@@ -11,6 +13,8 @@ import z.caAuth.skins.SkinsGui;
 import z.caAuth.util.Colors;
 
 public class SkinsCommand {
+
+    private static final String ADMIN_PERMISSION = "caauth.admin";
 
     private final SkinsGui gui;
     private final SkinService skins;
@@ -25,7 +29,7 @@ public class SkinsCommand {
     }
 
     @Command("skins")
-    public void open(BukkitCommandActor actor) {
+    public void open(BukkitCommandActor actor, @Optional OfflinePlayer target) {
         CommandSender sender = actor.sender();
         if (!(sender instanceof Player player)) {
             sender.sendMessage(authMessages.getErrorPrefix() + Colors.colorize(config.messages.playerOnly));
@@ -35,6 +39,19 @@ public class SkinsCommand {
             sender.sendMessage(authMessages.getErrorPrefix() + Colors.colorize(config.messages.unavailable));
             return;
         }
-        gui.openProfiles(player);
+        if (target == null || target.getUniqueId().equals(player.getUniqueId())) {
+            gui.openProfiles(player);
+            return;
+        }
+        if (!sender.hasPermission(ADMIN_PERMISSION)) {
+            sender.sendMessage(authMessages.getNoPermission());
+            return;
+        }
+        if (!target.hasPlayedBefore() && !target.isOnline()) {
+            sender.sendMessage(authMessages.getErrorPrefix()
+                    + Colors.colorize(config.messages.playerNotFound.replace("{player}", String.valueOf(target.getName()))));
+            return;
+        }
+        gui.openProfiles(player, target.getUniqueId());
     }
 }

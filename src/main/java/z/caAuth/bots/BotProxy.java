@@ -14,6 +14,7 @@ import java.net.PasswordAuthentication;
 import java.net.Proxy;
 import java.net.Socket;
 import javax.net.SocketFactory;
+import javax.net.ssl.SSLSocketFactory;
 
 public final class BotProxy {
 
@@ -124,6 +125,7 @@ public final class BotProxy {
                     return socket;
                 }
             });
+            factory.setSSLSocketFactory(new SocksSslSocketFactory(proxy, (SSLSocketFactory) SSLSocketFactory.getDefault()));
         }
         return factory;
     }

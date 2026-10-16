@@ -145,16 +145,22 @@ public class SkinService {
     }
 
     public boolean wear(Player player, SkinProfile profile) {
+        return wear(player.getUniqueId(), player, profile);
+    }
+
+    public boolean wear(UUID target, Player online, SkinProfile profile) {
         if (!isAvailable()) {
             return false;
         }
         try {
             SkinIdentifier identifier = identifierOf(profile);
-            SkinsRestorerProvider.get().getPlayerStorage().setSkinIdOfPlayer(player.getUniqueId(), identifier);
-            SkinsRestorerProvider.get().getSkinApplier(Player.class).applySkin(player, identifier);
+            SkinsRestorerProvider.get().getPlayerStorage().setSkinIdOfPlayer(target, identifier);
+            if (online != null) {
+                SkinsRestorerProvider.get().getSkinApplier(Player.class).applySkin(online, identifier);
+            }
             return true;
         } catch (RuntimeException e) {
-            plugin.getLogger().warning("Не удалось надеть скин игроку " + player.getName() + ": " + e.getMessage());
+            plugin.getLogger().warning("Не удалось надеть скин игроку " + target + ": " + e.getMessage());
             return false;
         }
     }

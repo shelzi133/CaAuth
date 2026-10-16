@@ -6,6 +6,8 @@ import eu.okaeri.configs.annotation.NameModifier;
 import eu.okaeri.configs.annotation.NameStrategy;
 import eu.okaeri.configs.annotation.Names;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Names(strategy = NameStrategy.HYPHEN_CASE, modifier = NameModifier.TO_LOWER_CASE)
@@ -54,6 +56,8 @@ public class MainConfig extends OkaeriConfig {
         public String secret = UUID.randomUUID().toString();
         @Comment("Входящий API плагина CaAuthVelocity: кик игрока при отвязке и смена пароля в tiAuth. Должен совпадать с inbound в его config.yml")
         public ProxyApi proxyApi = new ProxyApi();
+        @Comment("Дополнительные прокси (если их несколько и они независимы). Формат каждого элемента: host, port, timeout-seconds. Кик и смена пароля отправляются на все прокси")
+        public List<ProxyApi> additionalProxyApis = new ArrayList<>();
     }
 
     public static class ProxyApi extends OkaeriConfig {

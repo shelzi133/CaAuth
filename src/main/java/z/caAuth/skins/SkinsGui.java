@@ -44,17 +44,19 @@ public class SkinsGui implements Listener {
 
     private enum Choice { NICK, URL, BOT }
 
-    private record PendingInput(int slot, Choice choice, long expiresAt) {
+    private record PendingInput(int slot, Choice choice, UUID target, long expiresAt) {
     }
 
     private static final class Holder implements InventoryHolder {
         private final Kind kind;
         private final int slot;
+        private final UUID target;
         private Inventory inventory;
 
-        private Holder(Kind kind, int slot) {
+        private Holder(Kind kind, int slot, UUID target) {
             this.kind = kind;
             this.slot = slot;
+            this.target = target;
         }
 
         @Override
@@ -80,13 +82,17 @@ public class SkinsGui implements Listener {
     }
 
     public void openProfiles(Player player) {
-        Holder holder = new Holder(Kind.PROFILES, 0);
+        openProfiles(player, player.getUniqueId());
+    }
+
+    public void openProfiles(Player player, UUID target) {
+        Holder holder = new Holder(Kind.PROFILES, 0, target);
         Inventory inventory = Bukkit.createInventory(holder, PROFILE_INVENTORY_SIZE, component(config.gui.title));
         holder.inventory = inventory;
         fill(inventory, PROFILE_INVENTORY_SIZE);
 
         Map<Integer, SkinProfile> profiles = new ConcurrentHashMap<>();
-        for (SkinProfile profile : skins.profiles(player.getUniqueId())) {
+        for (SkinProfile profile : skins.profiles(target)) {
             profiles.put(profile.slot(), profile);
         }
         for (int index = 0; index < config.gui.profileSlots.size(); index++) {
@@ -96,8 +102,8 @@ public class SkinsGui implements Listener {
         player.openInventory(inventory);
     }
 
-    private void openTypes(Player player, int slot) {
-        Holder holder = new Holder(Kind.TYPES, slot);
+    private void openTypes(Player player, int slot, UUID target) {
+        Holder holder = new Holder(Kind.TYPES, slot, target);
         Inventory inventory = Bukkit.createInventory(holder, TYPE_INVENTORY_SIZE, component(config.gui.typeTitle));
         holder.inventory = inventory;
         fill(inventory, TYPE_INVENTORY_SIZE);
@@ -123,9 +129,9 @@ public class SkinsGui implements Listener {
             return;
         }
         if (holder.kind == Kind.PROFILES) {
-            handleProfileClick(player, event);
+            handleProfileClick(player, event, holder.target);
         } else {
-            handleTypeClick(player, holder.slot, event.getRawSlot());
+            handleTypeClick(player, holder.slot, event.getRawSlot(), holder.target);
         }
     }
 
@@ -160,7 +166,7 @@ public class SkinsGui implements Listener {
             return;
         }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            UUID owner = player.getUniqueId();
+            UUID owner = input.target();
             SkinService.Result result = input.choice() == Choice.NICK
                     ? skins.setFromNick(owner, input.slot(), text)
                     : skins.setFromUrl(owner, input.slot(), text);
@@ -177,13 +183,13 @@ public class SkinsGui implements Listener {
         });
     }
 
-    private void handleProfileClick(Player player, InventoryClickEvent event) {
+    private void handleProfileClick(Player player, InventoryClickEvent event, UUID target) {
         int index = config.gui.profileSlots.indexOf(event.getRawSlot());
         if (index < 0) {
             return;
         }
         int slot = index + 1;
-        SkinProfile profile = skins.profile(player.getUniqueId(), slot);
+        SkinProfile profile = skins.profile(target, slot);
         ClickType click = event.getClick();
 
         if (click == ClickType.SHIFT_RIGHT) {
@@ -191,46 +197,46 @@ public class SkinsGui implements Listener {
                 error(player, config.messages.deleteEmpty.replace("{slot}", String.valueOf(slot)));
                 return;
             }
-            skins.remove(player.getUniqueId(), slot);
+            skins.remove(target, slot);
             success(player, config.messages.deleted.replace("{slot}", String.valueOf(slot)));
-            openProfiles(player);
+            openProfiles(player, target);
         } else if (click == ClickType.LEFT) {
             if (profile == null) {
-                openTypes(player, slot);
+                openTypes(player, slot, target);
                 return;
             }
-            if (skins.wear(player, profile)) {
+            if (skins.wear(target, Bukkit.getPlayer(target), profile)) {
                 success(player, config.messages.wearSuccess.replace("{slot}", String.valueOf(slot)));
                 player.closeInventory();
             } else {
                 error(player, config.messages.wearError);
             }
         } else if (click == ClickType.RIGHT) {
-            openTypes(player, slot);
+            openTypes(player, slot, target);
         }
     }
 
-    private void handleTypeClick(Player player, int profileSlot, int rawSlot) {
+    private void handleTypeClick(Player player, int profileSlot, int rawSlot, UUID target) {
         if (rawSlot == config.gui.typeNickSlot) {
-            startInput(player, profileSlot, Choice.NICK);
+            startInput(player, profileSlot, Choice.NICK, target);
         } else if (rawSlot == config.gui.typeUrlSlot) {
-            startInput(player, profileSlot, Choice.URL);
+            startInput(player, profileSlot, Choice.URL, target);
         } else if (rawSlot == config.gui.typeBotSlot) {
             player.closeInventory();
-            boolean requested = bots.requestPng(player.getUniqueId(), profileSlot);
+            boolean requested = target.equals(player.getUniqueId()) && bots.requestPng(target, profileSlot);
             if (requested) {
                 success(player, config.messages.promptBot.replace("{slot}", String.valueOf(profileSlot)));
             } else {
                 error(player, config.messages.botUnavailable);
             }
         } else if (rawSlot == config.gui.typeBackSlot) {
-            openProfiles(player);
+            openProfiles(player, target);
         }
     }
 
-    private void startInput(Player player, int slot, Choice choice) {
+    private void startInput(Player player, int slot, Choice choice, UUID target) {
         long expiresAt = System.currentTimeMillis() + config.inputTimeoutSeconds * MILLIS_PER_SECOND;
-        pending.put(player.getUniqueId(), new PendingInput(slot, choice, expiresAt));
+        pending.put(player.getUniqueId(), new PendingInput(slot, choice, target, expiresAt));
         player.closeInventory();
         String template = choice == Choice.NICK ? config.messages.promptNick : config.messages.promptUrl;
         warning(player, template
