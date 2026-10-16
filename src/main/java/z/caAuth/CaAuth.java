@@ -133,7 +133,7 @@ public final class CaAuth extends JavaPlugin {
                         accountManager.getBindingId(account), account, slot), authMessagesConfig);
         botManager = new BotManager(this, authConfig, loginConfirmationManager, telegramBotMessages, discordBotMessages,
                 rolesConfig, bindingService, passwordService, twinkService, mainConfig, skinService, skinsConfig,
-                skinsBotMessages, new BankService(this));
+                skinsBotMessages, new BankService(this, mainConfig));
 
         if (authConfig.bots.loginConfirmation.enabled) {
             getLogger().info("Подтверждение входа через ботов активировано (интервал: "

@@ -59,6 +59,9 @@ public class TelegramSkinsMenu {
     }
 
     public InlineKeyboardButton menuButton() {
+        if (!skins.isAvailable()) {
+            return null;
+        }
         return callbackButton(botMessages.skins.bot.menuButton, TelegramMenu.CALLBACK_PREFIX + MENU_ACTION);
     }
 

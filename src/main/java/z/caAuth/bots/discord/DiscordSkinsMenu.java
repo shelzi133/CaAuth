@@ -85,6 +85,9 @@ public class DiscordSkinsMenu {
     }
 
     public Button menuButton() {
+        if (!skins.isAvailable()) {
+            return null;
+        }
         return button(botMessages.skins.discordButtons.menu, MENU_PREFIX + MENU_ACTION, botMessages.skins.bot.menuButton);
     }
 

@@ -2,6 +2,7 @@ package z.caAuth.banking;
 
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
+import z.caAuth.config.MainConfig;
 
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -21,13 +22,15 @@ public class BankService {
     private static final int MAX_AMOUNT = 1_000_000;
 
     private final JavaPlugin plugin;
+    private final MainConfig mainConfig;
 
-    public BankService(JavaPlugin plugin) {
+    public BankService(JavaPlugin plugin, MainConfig mainConfig) {
         this.plugin = plugin;
+        this.mainConfig = mainConfig;
     }
 
     public boolean isAvailable() {
-        return plugin.getServer().getPluginManager().isPluginEnabled("CalistoBanking");
+        return mainConfig.module.banking.enabled && plugin.getServer().getPluginManager().isPluginEnabled("CalistoBanking");
     }
 
     public static int parseAmount(String raw) {

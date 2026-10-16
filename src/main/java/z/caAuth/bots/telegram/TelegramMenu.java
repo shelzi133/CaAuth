@@ -166,8 +166,8 @@ public class TelegramMenu {
             case "manage" -> button(messagesConfig.getMenuManageButton(), ACTION_MANAGE);
             case "skins" -> skinsMenu.menuButton();
             case "unbind" -> button(messagesConfig.getMenuUnbindButton(), ACTION_UNBIND);
-            case "password" -> button(messagesConfig.getMenuPasswordButton(), ACTION_PASSWORD);
-            case "twink" -> button(messagesConfig.getMenuTwinkButton(), ACTION_TWINK);
+            case "password" -> passwordService.isAvailable() ? button(messagesConfig.getMenuPasswordButton(), ACTION_PASSWORD) : null;
+            case "twink" -> twinkService.isAvailable() ? button(messagesConfig.getMenuTwinkButton(), ACTION_TWINK) : null;
             case "bank" -> bankService.isAvailable() ? button(skinsBot.bank.menuButton, ACTION_BANK) : null;
             case "back" -> button(messagesConfig.getMenuBackButton(), ACTION_BACK);
             default -> null;

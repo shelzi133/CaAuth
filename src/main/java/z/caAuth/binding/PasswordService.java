@@ -40,7 +40,7 @@ public class PasswordService {
     }
 
     public boolean isAvailable() {
-        return mainConfig.isVelocityMode();
+        return mainConfig.module.tiauth.enabled && mainConfig.isVelocityMode();
     }
 
     public CompletableFuture<Result> changePassword(BindingType type, String bindingId) {

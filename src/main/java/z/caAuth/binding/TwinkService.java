@@ -63,7 +63,7 @@ public class TwinkService {
     }
 
     public boolean isAvailable() {
-        return mainConfig.isVelocityMode();
+        return mainConfig.module.tiauth.enabled && mainConfig.isVelocityMode();
     }
 
     public int lifetimeMinutes() {

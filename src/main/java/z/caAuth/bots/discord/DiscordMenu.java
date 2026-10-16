@@ -307,12 +307,16 @@ public class DiscordMenu {
             case "manage" -> embeds.button(ButtonKey.MENU_MANAGE, PREFIX + ACTION_MANAGE, messages.getMenuManageButton());
             case "skins" -> skinsMenu.menuButton();
             case "unbind" -> embeds.button(ButtonKey.MENU_UNBIND, PREFIX + ACTION_UNBIND, messages.getMenuUnbindButton());
-            case "password" -> embeds.button(ButtonKey.MENU_PASSWORD, PREFIX + ACTION_PASSWORD, messages.getMenuPasswordButton());
+            case "password" -> passwordService.isAvailable()
+                    ? embeds.button(ButtonKey.MENU_PASSWORD, PREFIX + ACTION_PASSWORD, messages.getMenuPasswordButton())
+                    : null;
             case "bank" -> bankService.isAvailable()
                     ? embeds.button(skinsBot.bank.discordMenuStyle, PREFIX + ACTION_BANK, skinsBot.bank.menuButton)
                     : null;
             case "sync" ->embeds.button(ButtonKey.MENU_SYNC, PREFIX + ACTION_SYNC, messages.getMenuSyncButton());
-            case "twink" -> embeds.button(ButtonKey.MENU_TWINK, PREFIX + ACTION_TWINK, messages.getMenuTwinkButton());
+            case "twink" -> twinkService.isAvailable()
+                    ? embeds.button(ButtonKey.MENU_TWINK, PREFIX + ACTION_TWINK, messages.getMenuTwinkButton())
+                    : null;
             case "back" -> backButton(ACTION_BACK);
             default -> null;
         };

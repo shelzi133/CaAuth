@@ -31,11 +31,23 @@ public class MainConfig extends OkaeriConfig {
     public static class Module extends OkaeriConfig {
         public MainConfig.Auth auth = new MainConfig.Auth();
         public MainConfig.Skins skins = new MainConfig.Skins();
+        public MainConfig.TiAuth tiauth = new MainConfig.TiAuth();
+        public MainConfig.Banking banking = new MainConfig.Banking();
+    }
+
+    public static class TiAuth extends OkaeriConfig {
+        @Comment("Вкл/выкл функции tiAuth: смена пароля и твинки. Если выключено, кнопок в ботах нет. Работает только вместе с module.auth.velocity")
+        public boolean enabled = false;
+    }
+
+    public static class Banking extends OkaeriConfig {
+        @Comment("Вкл/выкл банк: кнопка и переводы в ботах. Нужен плагин CalistoBanking")
+        public boolean enabled = false;
     }
 
     public static class Skins extends OkaeriConfig {
         @Comment("Вкл/выкл скины: команда /caauth skins, кнопки в ботах. Нужен плагин SkinsRestorer, настройка в папке skins")
-        public boolean enabled = true;
+        public boolean enabled = false;
     }
 
     public static class Auth extends OkaeriConfig {
