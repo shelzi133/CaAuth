@@ -42,7 +42,9 @@ public class TwinkService {
         }
     }
 
-    private static final Pattern NAME_PATTERN = Pattern.compile("^[A-Za-z0-9_]{3,16}$");
+    private static final Pattern NAME_PATTERN = Pattern.compile("^[.*+!\\-]{0,3}[A-Za-z0-9_]{3,16}$");
+
+    private static final int MAX_NAME_LENGTH = 16;
 
     private final AccountManager accountManager;
     private final BindingService bindingService;
@@ -117,7 +119,7 @@ public class TwinkService {
         }
 
         String name = rawName == null ? "" : rawName.trim();
-        if (!NAME_PATTERN.matcher(name).matches()) {
+        if (!NAME_PATTERN.matcher(name).matches() || name.length() > MAX_NAME_LENGTH) {
             return done(InviteStatus.INVALID_NAME, name);
         }
         if (accountManager.isNameBound(name)) {
